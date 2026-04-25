@@ -1,6 +1,6 @@
 # 👋 Hi, I'm Antonio Di Felice
 
-**Senior Database Architect | 25+ Years Oracle Expertise | Expanding into Modern Data Technologies**
+**Senior Database Architect --> Data Engineer | 25+ Years Oracle Expertise | Expanding into Modern Data Technologies**
 
 📍 Based in Italy | 🌐 Remote-first | 💬 English (C1), Spanish (C1)
 
@@ -57,32 +57,6 @@ Combining **25 years of database architecture expertise** with **modern cloud-na
 - Deep understanding of data modeling, optimization, and quality from decades of experience
 - Fresh perspective on modern tools and platforms through active hands-on learning
 - Ability to bridge legacy enterprise systems with modern data architectures
-
----
-
-## 🛠️ Projects in This Repository
-
-### 📌 Flight Deal Finder (Current)
-**Description:** Automated flight price monitoring system with multi-API integration  
-**Tech:** Python, Sheety API, Amadeus API, Twilio, error handling, logging  
-**Learning:** REST API consumption, data transformation, notification workflows, production-grade error handling  
-**Skills Demonstrated:** Integration architecture, data processing, automation
-
-### 📌 Data Processing Pipelines
-**Description:** ETL-style workflows for data extraction, transformation, and validation  
-**Tech:** Python, Pandas, CSV/JSON processing, data quality checks  
-**Learning:** Pipeline design, data cleaning, transformation patterns, logging strategies  
-**Skills Demonstrated:** Data engineering fundamentals with database expertise background
-
-### 📌 Web API Data Extraction
-**Description:** Scripts for consuming REST APIs and storing structured data  
-**Tech:** Python, requests library, JSON parsing, authentication patterns  
-**Learning:** HTTP methods, error handling, data serialization, API best practices  
-**Skills Demonstrated:** Modern integration patterns complementing traditional database skills
-
-*(Repository actively updated with new projects as learning progresses)*
-
----
 
 ## 💡 What I Bring to the Table
 
@@ -157,6 +131,17 @@ MyProfessionalPortfolio/
 ├── algorithms/              # PCAP prep – data structures, modules, packages, cipher implementations
 └── mini-projects/           # Focused standalone scripts showcasing specific techniques
 ```
+
+### 📁 Project Folder Convention
+
+Each folder in this repository represents a **distinct project**. Inside every project folder you will find two documentation files:
+
+| File               | Purpose                                                                                                                       |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `README.md`        | **Analysis & Design** — problem statement, requirements, architecture decisions, technical approach, and implementation notes |
+| `retrospective.md` | **Lessons Learned** — what I learned from the project, open tasks and next steps, and areas to improve in future iterations   |
+
+This structure enforces deliberate reflection: not just *building* things, but understanding *why* choices were made and *what* to carry forward.
 
 > **Work in progress.** The repository is in its early organization phase. Projects are being curated and documented to showcase-quality standard — this structure will grow steadily.
 
