@@ -13,11 +13,45 @@ I will choose some blue colour palette with some shade of purple.
 Take some inspiration for colour palette from www.colorhunt.com or Adobe Color website.
 
 ## Typography
+
 Serif typeface    --> More authoritative, oldish, Stable  (e.g. Times New Roman, Old Style, Modern)
 Sans-Serif typeface --> More legible, sensible, straightforward (e.g. Humanist, Gill Sans, etc.)
 
-### How the Portfolio Website should be built
-here are some sections which is essential for all types of portfolios, summarized below:
+### Hierarchy
+
+Colour --> Different colours foreground and background can catch the attention
+Size --> Bigger items draw more your attention
+Layout --> You can have bigger blocks of text or more text and images interspersed within the page
+           Wikipedia is mentioned as a bad example as users struggles to keep reading throughout this long line
+           In terms of design there is an optimal line length neither too long nor too short.
+           A good layout wisely distribute the content within the page.
+Alignment --> How you position each element to each other.
+              Here the trick is to reduce the number of alignments between items.
+              Use grid lines within your layout.
+White space --> Luxury shops have the items separated with a certain white space.
+                So the item looks more minimalistic and luxury.
+Consider your audience.
+
+### User Experience (UX/UI)
+Difference between design and UX.
+Design is something we push to our audience.
+UX is being simple and invisible, so to simplify the user experience
+
+### Reading Patterns
+
+F pattern of reading --> F layout or Z layout(e.g. Facebook).
+
+## Mobile responsive website
+
+We need to adapt our website to smartphones, tablet, desktop and large desktop screens(use Bootstrap).
+
+## Avoid Dark Patterns(Anti Pattern)
+
+The website should do what is intended for, not manipulating the users. 
+
+## How the Portfolio Website should be built
+
+Here are some sections which is essential for all types of portfolios, summarized below:
 
 1. Hero section.
 
