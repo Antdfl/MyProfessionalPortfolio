@@ -1,3 +1,7 @@
+
+# My Portfolio website: 
+https://antoniodifelice.helioho.st
+
 # ANALYSIS AND DESIGN DOCUMENT
 
 ## Use of Web Design principles
@@ -86,3 +90,6 @@ Add your contact details and other contact channels such as your GitHub profile,
 . Step Five: Add Work Experience section
 . Step Six: Add Contact section
 . Step Seven: Add Footer section
+
+Claude Code prompt:
+Build a complete, production-ready single page Portfolio / Personal from scratch keeping into consideration the README.md, specific colour palettes, layout with sidebar, hero section, card based grid, sticky footer, animations,on-scroll and the page should be responsive. Take the content to fill the page from the README.md in the main folder.
