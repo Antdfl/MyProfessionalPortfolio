@@ -32,6 +32,8 @@ I imagine a text on the center top of the app:
 - Button to upload the file with "Upload the file"
 - After the elaboration will appear a square button with the label "Download", so that you can download the file containing your watermark.
 
+![image info](./assets/prototype.png "Watermark App prototype")
+
 The question is: when I have a file, how can I add a watermark?
 See the Design in the implement watermark detail.
 
