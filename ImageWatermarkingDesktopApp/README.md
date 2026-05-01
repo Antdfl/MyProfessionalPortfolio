@@ -8,11 +8,11 @@ Normally, you would have to use an image editing software like Photoshop to add 
 
 Use case: e.g you want to start posting your photos to Instagram but you want to add your website to all the photos, you can now use your software to add your website/logo automatically to any image.
 
-A similar online service is: https://watermarkly.com/
+A similar online service is: <https://watermarkly.com/>
 
 You might need:
-https://pypi.org/project/Pillow/
-https://docs.python.org/3/library/tkinter.html
+<https://pypi.org/project/Pillow/>
+<https://docs.python.org/3/library/tkinter.html>
 and some Googling.
 
 ## ANALYSYS
@@ -28,11 +28,10 @@ The core image library is designed for fast access to data stored in a few basic
 
 I imagine a text on the center top of the app:
 
-- Add Watermark
-- Button to upload the file with "Upload the file"
-- After the elaboration will appear a square button with the label "Download", so that you can download the file containing your watermark.
+- Push the button to upload the file with "Upload the file" chosing the path and the file to elaborate.
+- When the user click on the Download button the program allows you to select the name and the path of the output file. Before downloading the program adds the watermark so that you can download the file containing your watermark.
 
-![image info](./assets/prototype.png "Watermark App prototype")
+![Local image](./assets/prototype.png)
 
 The question is: when I have a file, how can I add a watermark?
 See the Design in the implement watermark detail.
@@ -48,7 +47,7 @@ python3 -m pip install --upgrade Pillow
 2. Prepare a skeleton of the app.
 
 3. Implement the watermarking
-https://blog.pythonlibrary.org/2017/10/17/how-to-watermark-your-photos-with-python/
+<https://blog.pythonlibrary.org/2017/10/17/how-to-watermark-your-photos-with-python/>
 
 Here's the suggested code
 from PIL import Image
@@ -67,13 +66,11 @@ def watermark_with_transparency(input_image_path,
     transparent.show()
     transparent.save(output_image_path)
 
-
 if __name__ == '__main__':
     img = 'lighthouse.jpg'
     watermark_with_transparency(img, 'lighthouse_watermarked3.jpg',
                                 'watermark.png', position=(0,0))
 
-At the beginning test the watermarking color with your watermarking file and a fixed image in your code.
-When you realise that your code works, you can use the uploaded image and use your algorithm in a more generic way for whatever image file you want.
+At the beginning test the watermarking color with your watermarking file and a fixed image in your code. When you realise that your code works, you can use the uploaded image and use your algorithm in a more generic way for whatever image file you want.
 
 4. Put all together and test to obtain the desired results.
