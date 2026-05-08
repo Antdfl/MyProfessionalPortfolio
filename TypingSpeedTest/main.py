@@ -264,9 +264,15 @@ class TypingSpeedTest:
         self.tw.config(state="disabled")
         self._render_text("")
 
-        # Re-enable the entry field and show the placeholder hint.
-        self.entry.config(state="normal")
-        self._set_placeholder()
+        # Re-enable the entry field with a clean, focused state.
+        # We do NOT call _set_placeholder() here because the entry receives
+        # focus immediately; if _set_language() was triggered by a flag click
+        # while the entry already had focus, FocusIn would never fire and the
+        # placeholder flag would stay True, silently blocking _on_change().
+        # The placeholder is still shown via _focus_out() if the user clicks away.
+        self.entry.config(state="normal", fg="black")
+        self._placeholder = False
+        self._set_var_silent("")
         self.entry.focus_set()
 
     def _set_language(self, lang):
