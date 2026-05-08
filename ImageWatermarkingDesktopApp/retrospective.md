@@ -1,4 +1,4 @@
-* # Lesson Learned
+# Lesson Learned
 
 ## Difficulties encountered during the design
 
