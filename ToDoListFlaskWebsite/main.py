@@ -66,6 +66,22 @@ login_manager.login_message_category = 'info'
 
 @login_manager.user_loader
 def load_user(user_id):
+    """
+    Flask-Login user-loader callback.
+
+    Called automatically by Flask-Login on every authenticated request to
+    reload the User object from the database using the ID that was serialised
+    into the signed session cookie at login time.
+
+    Args:
+        user_id (str): The user's primary key as a string (Flask-Login always
+            passes it as a string regardless of the column type).
+
+    Returns:
+        User | None: The matching User model instance, or None if the ID is
+        not found — Flask-Login will then treat the session as expired and
+        redirect the visitor to the login page.
+    """
     return User.query.get(int(user_id))
 
 
@@ -237,7 +253,19 @@ SEED_LABELS = {
 
 
 def seed_labels():
-    """Insert missing rows into site_labels; rows that already exist are skipped."""
+    """
+    Populate the site_labels table with the default translations defined in SEED_LABELS.
+
+    Iterates over every (key, language, value) triple in SEED_LABELS and inserts
+    a new SiteLabel row only when no matching (LabelKey, Lang) pair already exists
+    in the database.  Rows that are already present are left untouched, so this
+    function is safe to call on every startup without overwriting user-edited labels.
+
+    A single db.session.commit() is issued at the end only when at least one new
+    row was added, avoiding an unnecessary round-trip on subsequent starts.
+
+    Called once inside the ``if __name__ == '__main__'`` block after db.create_all().
+    """
     changed = False
     for key, translations in SEED_LABELS.items():
         for lang, value in translations.items():
@@ -302,6 +330,17 @@ def set_lang(lang):
 
 @app.route('/')
 def index():
+    """
+    Marketing / landing page — GET /
+
+    Authenticated users are redirected immediately to their list dashboard so
+    they never land on the marketing page again after signing in.
+    Unauthenticated visitors receive the index.html landing page.
+
+    Returns:
+        Response: Redirect to /lists for authenticated users, or the rendered
+        index.html template for guests.
+    """
     if current_user.is_authenticated:
         return redirect(url_for('lists'))
     return render_template('index.html')
@@ -311,6 +350,30 @@ def index():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    """
+    User registration — GET / POST /register
+
+    GET:  Renders the registration form.  Already-authenticated users are
+          redirected to /lists so they cannot accidentally create a second account.
+
+    POST: Validates the submitted form data in this order:
+          1. All four fields (first_name, last_name, email, password) must be
+             non-empty after stripping whitespace → flashes 'flash_all_fields'
+             and re-renders the form on failure.
+          2. Password length must be >= PWD_LENGTH_MIN characters →
+             flashes 'flash_pwd_length' (with the limit interpolated) and
+             re-renders on failure.
+          3. Email must not already exist in the users table →
+             flashes 'flash_email_exists' and re-renders on failure.
+          On success: hashes the password with Werkzeug's PBKDF2-SHA256, saves
+          the new User row, logs the user in immediately via Flask-Login, and
+          redirects to /lists with a personalised welcome flash message.
+
+    Returns:
+        Response: Redirect to /lists on success or when already authenticated;
+        rendered register.html (with pwd_min context variable) on GET or any
+        validation failure.
+    """
     if current_user.is_authenticated:
         return redirect(url_for('lists'))
 
@@ -350,6 +413,27 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    """
+    User login — GET / POST /login
+
+    GET:  Renders the login form.  Already-authenticated users are redirected
+          to /lists.
+
+    POST: Looks up the user by email (lowercased for case-insensitive matching)
+          and verifies the submitted password against the stored Werkzeug hash
+          using check_password_hash().
+          On success: logs the user in via Flask-Login and honours the optional
+          ``next`` query-string parameter so users land on the page they were
+          trying to reach before being redirected to login.  Flask-Login
+          validates the next URL to prevent open-redirect attacks.
+          On failure: flashes 'flash_invalid_login' — a deliberately vague
+          message that does not reveal whether the email or the password was
+          wrong (avoids user enumeration).
+
+    Returns:
+        Response: Redirect to ``next`` or /lists on success; rendered login.html
+        on GET or when credentials are invalid.
+    """
     if current_user.is_authenticated:
         return redirect(url_for('lists'))
 
@@ -371,6 +455,17 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
+    """
+    User logout — GET /logout  (login required)
+
+    Ends the current session by calling Flask-Login's logout_user(), which
+    removes the user ID from the signed session cookie.  The @login_required
+    decorator ensures unauthenticated requests are redirected to /login before
+    this view is ever invoked.
+
+    Returns:
+        Response: Redirect to the home page (/).
+    """
     logout_user()
     return redirect(url_for('index'))
 
@@ -380,6 +475,17 @@ def logout():
 @app.route('/lists')
 @login_required
 def lists():
+    """
+    List dashboard — GET /lists  (login required)
+
+    Fetches every List row owned by the current user, ordered newest-first by
+    CreatedAt, and passes them to the lists.html template.  Only the current
+    user's lists are ever returned; ownership is enforced by the UserId filter.
+
+    Returns:
+        Response: Rendered lists.html with a ``lists`` template variable
+        containing the user's List objects in descending CreatedAt order.
+    """
     user_lists = (
         List.query
         .filter_by(UserId=current_user.UserId)
@@ -392,6 +498,17 @@ def lists():
 @app.route('/lists/new', methods=['POST'])
 @login_required
 def new_list():
+    """
+    Create a new list — POST /lists/new  (login required)
+
+    Reads the ``title`` form field, strips surrounding whitespace, and falls
+    back to 'Untitled list' if the result is empty.  Inserts a new List row
+    owned by the current user, commits, and redirects straight to the new
+    list's detail page so the user can start adding tasks immediately.
+
+    Returns:
+        Response: Redirect to /lists/<new_list_id>.
+    """
     title = request.form.get('title', '').strip() or 'Untitled list'
     todo_list = List(UserId=current_user.UserId, Title=title)
     db.session.add(todo_list)
@@ -402,6 +519,22 @@ def new_list():
 @app.route('/lists/<int:list_id>')
 @login_required
 def list_detail(list_id):
+    """
+    List detail page — GET /lists/<list_id>  (login required)
+
+    Loads the requested List, enforcing ownership so that users cannot view
+    each other's lists even if they guess a valid list_id.  Uses
+    first_or_404() which returns a 404 response when the list does not exist
+    *or* when it belongs to a different user — preventing information
+    disclosure across accounts.
+
+    Args:
+        list_id (int): Primary key of the List to display, taken from the URL.
+
+    Returns:
+        Response: Rendered list_detail.html with ``todo_list`` in the template
+        context.  404 if the list is not found or is owned by another user.
+    """
     todo_list = List.query.filter_by(
         ListId=list_id, UserId=current_user.UserId
     ).first_or_404()
@@ -411,6 +544,21 @@ def list_detail(list_id):
 @app.route('/lists/<int:list_id>/rename', methods=['POST'])
 @login_required
 def rename_list(list_id):
+    """
+    Rename a list — POST /lists/<list_id>/rename  (login required)
+
+    Reads the ``title`` form field and, if non-empty after stripping whitespace,
+    updates the list's Title and commits.  A blank title is silently ignored so
+    the existing title is preserved without any error message.  Ownership is
+    enforced via first_or_404 (same pattern as list_detail).
+
+    Args:
+        list_id (int): Primary key of the List to rename, taken from the URL.
+
+    Returns:
+        Response: Redirect to /lists/<list_id> after the rename (or no-op).
+        404 if the list is not found or is owned by another user.
+    """
     todo_list = List.query.filter_by(
         ListId=list_id, UserId=current_user.UserId
     ).first_or_404()
@@ -425,6 +573,21 @@ def rename_list(list_id):
 @app.route('/lists/<int:list_id>/delete', methods=['POST'])
 @login_required
 def delete_list(list_id):
+    """
+    Delete a list — POST /lists/<list_id>/delete  (login required)
+
+    Removes the List row after verifying ownership with first_or_404.  All
+    associated Task rows are deleted automatically via the cascade rule defined
+    in models.py, so no separate Task deletion is needed here.  Flashes a
+    localised confirmation message and redirects back to the dashboard.
+
+    Args:
+        list_id (int): Primary key of the List to delete, taken from the URL.
+
+    Returns:
+        Response: Redirect to /lists after deletion.
+        404 if the list is not found or is owned by another user.
+    """
     todo_list = List.query.filter_by(
         ListId=list_id, UserId=current_user.UserId
     ).first_or_404()
@@ -439,6 +602,22 @@ def delete_list(list_id):
 @app.route('/lists/<int:list_id>/tasks/add', methods=['POST'])
 @login_required
 def add_task(list_id):
+    """
+    Add a task to a list — POST /lists/<list_id>/tasks/add  (login required)
+
+    First verifies that the target list exists and belongs to the current user
+    (first_or_404) so no task can be injected into another user's list.  Then
+    reads the ``task_text`` form field; if non-empty after stripping whitespace
+    a new Task row is inserted.  Blank submissions are silently ignored — the
+    page reloads without adding anything.
+
+    Args:
+        list_id (int): Primary key of the parent List, taken from the URL.
+
+    Returns:
+        Response: Redirect to /lists/<list_id>.
+        404 if the list is not found or is owned by another user.
+    """
     List.query.filter_by(
         ListId=list_id, UserId=current_user.UserId
     ).first_or_404()
@@ -453,6 +632,22 @@ def add_task(list_id):
 @app.route('/tasks/<int:task_id>/toggle', methods=['POST'])
 @login_required
 def toggle_task(task_id):
+    """
+    Toggle a task's completion state — POST /tasks/<task_id>/toggle  (login required)
+
+    Loads the Task by joining through its parent List so ownership can be
+    verified in a single query (List.UserId == current_user.UserId).  This
+    join-based check prevents a user from toggling tasks that belong to lists
+    they do not own, even if they know the task's primary key directly.
+    Flips the boolean IsDone column and commits.
+
+    Args:
+        task_id (int): Primary key of the Task to toggle, taken from the URL.
+
+    Returns:
+        Response: Redirect to /lists/<parent_list_id> after the toggle.
+        404 if the task is not found or the owning list belongs to another user.
+    """
     task = (
         Task.query.join(List)
         .filter(Task.TaskId == task_id, List.UserId == current_user.UserId)
@@ -466,6 +661,21 @@ def toggle_task(task_id):
 @app.route('/tasks/<int:task_id>/delete', methods=['POST'])
 @login_required
 def delete_task(task_id):
+    """
+    Delete a task — POST /tasks/<task_id>/delete  (login required)
+
+    Uses the same join-based ownership check as toggle_task to prevent
+    cross-account deletions.  The parent list_id is captured before the row
+    is deleted so the redirect target URL can still be built after the Task
+    object is gone from the session.
+
+    Args:
+        task_id (int): Primary key of the Task to delete, taken from the URL.
+
+    Returns:
+        Response: Redirect to /lists/<parent_list_id> after deletion.
+        404 if the task is not found or the owning list belongs to another user.
+    """
     task = (
         Task.query.join(List)
         .filter(Task.TaskId == task_id, List.UserId == current_user.UserId)
@@ -481,6 +691,20 @@ def delete_task(task_id):
 
 @app.route('/db-status')
 def db_status():
+    """
+    Database health check — GET /db-status  (public, no auth required)
+
+    Executes a trivial ``SELECT 1`` via SQLAlchemy to verify that the
+    application can reach the configured PostgreSQL database.  Intended for
+    uptime monitors, load-balancer health probes, and deployment smoke tests;
+    no login is required so external tools can call it without credentials.
+
+    Returns:
+        dict: ``{'status': 'ok', 'message': 'Database connection successful'}``
+        with HTTP 200 on success.
+        dict: ``{'status': 'error', 'message': <exception text>}`` with HTTP
+        500 if the database is unreachable or the query fails.
+    """
     try:
         db.session.execute(db.text('SELECT 1'))
         return {'status': 'ok', 'message': 'Database connection successful'}
