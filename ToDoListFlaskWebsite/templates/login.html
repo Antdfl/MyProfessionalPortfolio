@@ -1,0 +1,189 @@
+{#
+  login.html — Login page
+  ========================
+  Shown when a user visits '/login' (GET) or submits the login form (POST).
+  If the POST succeeds, main.py logs the user in and redirects them away;
+  if it fails, this template is re-rendered with a flash error message.
+
+  Extends: base.html
+  Context variables: none (form errors come through via flash messages)
+
+  Page layout (two-column grid, collapses to single column on mobile):
+    Left  — .auth-brand   : decorative brand panel with purple gradient
+    Right — .auth-form-panel : the actual email/password login form
+
+  Flash messages (rendered by base.html before this block):
+    'error'  → "Invalid email or password."
+#}
+{% extends "base.html" %}
+{% block title %}Log in — Listly{% endblock %}
+
+{# Page-specific CSS injected into the <head> via the extra_head block in base.html #}
+{% block extra_head %}
+<style>
+  /* ── Two-column auth layout ──────────────────────────────────────────
+     The page fills the viewport height below the nav bar (100vh minus
+     the ~57px nav). On screens narrower than 720px the left brand panel
+     is hidden so only the form is shown, making it mobile-friendly.
+  ─────────────────────────────────────────────────────────────────── */
+  .auth-shell {
+    min-height: calc(100vh - 57px);
+    display: grid; grid-template-columns: 1fr 1.05fr; /* right column slightly wider for the form */
+  }
+
+  /* ── Left brand panel ────────────────────────────────────────────────
+     Decorative purple gradient panel. The ::before pseudo-element
+     adds a subtle grid pattern using repeating linear gradients.
+  ─────────────────────────────────────────────────────────────────── */
+  .auth-brand {
+    background: linear-gradient(150deg, var(--primary) 0%, var(--primary-deep) 100%);
+    padding: 60px 52px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative; overflow: hidden;
+  }
+  /* Subtle grid overlay on the brand panel background */
+  .auth-brand::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  /* Logo, headline, and feature pills inside the brand panel */
+  .auth-brand-logo { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+  .auth-brand-logo-icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    background: rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auth-brand-name { font-weight: 800; font-size: 18px; color: #fff; letter-spacing: -.02em; }
+  .auth-brand-body { position: relative; z-index: 1; }
+  .auth-brand-headline {
+    font-size: clamp(28px, 3.5vw, 44px); font-weight: 800;
+    color: #fff; letter-spacing: -.025em; line-height: 1.1; margin-bottom: 16px;
+  }
+  .auth-brand-sub { font-size: 16px; color: rgba(255,255,255,.65); line-height: 1.6; max-width: 340px; }
+  .auth-brand-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 28px; }
+  /* Small frosted tags listing app features */
+  .auth-brand-pill {
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(255,255,255,.12); color: rgba(255,255,255,.8);
+    font-size: 13px; font-weight: 500;
+  }
+
+  /* ── Right form panel ────────────────────────────────────────────────
+     Centred form box with a max width so it doesn't stretch too wide
+     on large screens.
+  ─────────────────────────────────────────────────────────────────── */
+  .auth-form-panel {
+    display: flex; align-items: center; justify-content: center;
+    padding: 48px 40px;
+  }
+  .auth-form-box { width: 100%; max-width: 400px; animation: fadeIn .35s ease both; }
+  .auth-form-box a.back-link { margin-bottom: 32px; }
+  .auth-heading { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6px; }
+  .auth-sub { font-size: 14px; color: var(--ink-2); margin-bottom: 32px; }
+  .auth-sub a { color: var(--primary); font-weight: 600; text-decoration: none; }
+  .auth-sub a:hover { text-decoration: underline; }
+  .auth-form { display: flex; flex-direction: column; gap: 16px; }
+  /* Full-width submit button for the form */
+  .auth-submit { width: 100%; padding: 14px; border-radius: 16px; font-size: 16px; font-weight: 700; }
+
+  /* On mobile (< 720px): collapse to single column and hide the brand panel */
+  @media (max-width: 720px) {
+    .auth-shell { grid-template-columns: 1fr; }
+    .auth-brand { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+
+  <!-- ── Left brand panel ────────────────────────────────────────────────
+       Decorative only — no interactive elements.
+       Hidden on mobile via the @media query above.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="auth-brand">
+    <!-- Logo in the top-left corner of the brand panel -->
+    <div class="auth-brand-logo">
+      <div class="auth-brand-logo-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M3 9l4 4 8-8" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="auth-brand-name">Listly</span>
+    </div>
+
+    <!-- Headline and feature pills in the middle of the brand panel -->
+    <div class="auth-brand-body">
+      <h2 class="auth-brand-headline">
+        Welcome<br>back <span class="serif" style="color:rgba(255,255,255,.8)">again</span>
+      </h2>
+      <p class="auth-brand-sub">
+        Log in to pick up exactly where you left off. Your lists are waiting.
+      </p>
+      <div class="auth-brand-pills">
+        <span class="auth-brand-pill">Multiple lists</span>
+        <span class="auth-brand-pill">Task tracking</span>
+        <span class="auth-brand-pill">Always in sync</span>
+      </div>
+    </div>
+
+    <!-- Copyright text pinned to the bottom of the brand panel -->
+    <p style="color:rgba(255,255,255,.35); font-size:12px; position:relative; z-index:1;">
+      © Listly {{ 2025 }}
+    </p>
+  </div>
+
+  <!-- ── Right form panel ────────────────────────────────────────────────
+       The actual login form. Submits via POST to the same '/login' URL.
+       Flash errors from a failed login attempt are shown by base.html
+       above this block, before the form renders.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="auth-form-panel">
+    <div class="auth-form-box">
+      <!-- Back link: returns to the landing page without losing the URL history -->
+      <a href="{{ url_for('index') }}" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Back to home
+      </a>
+
+      <h1 class="auth-heading">Log in</h1>
+      <!-- Link to registration for users who don't have an account yet -->
+      <p class="auth-sub">
+        No account?
+        <a href="{{ url_for('register') }}">Sign up for free</a>
+      </p>
+
+      <!--
+        Login form.
+        method="POST" sends data to the server (not in the URL).
+        The action defaults to the current URL ('/login') so no action attribute is needed.
+        Input autocomplete hints help browsers auto-fill saved credentials.
+      -->
+      <form method="POST" class="auth-form">
+        <div class="form-group">
+          <label class="form-label" for="email">Email address</label>
+          <!-- type="email" enables browser-side format validation and the right mobile keyboard -->
+          <input class="form-input" type="email" id="email" name="email"
+                 placeholder="you@example.com" required autocomplete="email">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <!-- type="password" masks the input characters -->
+          <input class="form-input" type="password" id="password" name="password"
+                 placeholder="••••••••" required autocomplete="current-password">
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-submit">Log in</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,293 @@
+{#
+  lists.html — Lists dashboard page
+  ===================================
+  Shows all to-do lists that belong to the logged-in user.
+  This is the main app screen users land on after logging in.
+
+  Extends: base.html
+  Route: GET /lists  (requires login — see @login_required in main.py)
+
+  Context variables passed from main.py lists():
+    lists  — a Python list of List objects, ordered newest-first.
+             Each List object exposes:
+               lst.ListId       → integer primary key (used in URL generation)
+               lst.Title        → string name of the list
+               lst.CreatedAt    → datetime the list was created
+               lst.done_count   → int, number of completed tasks (property on model)
+               lst.total_count  → int, total number of tasks (property on model)
+
+  Page structure:
+    1. Header row  — user's name + "My Lists" headline on the left;
+                     inline "create new list" form on the right.
+    2. Cards grid  — one card per list, or an empty-state message if no lists exist.
+
+  Each list card shows:
+    - The list title
+    - A progress bar (if the list has tasks)
+    - The creation date
+    - A status badge: "Empty" | "X/Y" tasks done | "All done" checkmark
+    - A delete button (appears on hover)
+#}
+{% extends "base.html" %}
+{% block title %}My Lists — Listly{% endblock %}
+
+{# Page-specific CSS for the lists dashboard #}
+{% block extra_head %}
+<style>
+  /* Outer page wrapper with top/bottom padding; fadeIn from base.html */
+  .lists-page { padding: 52px 0 80px; animation: fadeIn .3s ease both; }
+
+  /* ── Header row ──────────────────────────────────────────────────────
+     Flexbox row: user name + headline on the left, create-form on the right.
+     flex-wrap lets them stack vertically on narrow screens.
+  ─────────────────────────────────────────────────────────────────── */
+  .lists-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 36px;
+  }
+  .lists-headline { font-size: 32px; font-weight: 800; letter-spacing: -.025em; line-height: 1.1; }
+  /* Small ALL-CAPS label above the headline showing the user's full name */
+  .lists-eyebrow {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--ink-3); margin-bottom: 6px;
+  }
+
+  /* ── Inline "create new list" form ──────────────────────────────────
+     A pill-shaped container with a text input and a Create button inside.
+     :focus-within applies the focus ring when any child element is focused.
+  ─────────────────────────────────────────────────────────────────── */
+  .new-list-form {
+    display: flex; gap: 8px; align-items: center;
+    background: var(--surface); border: 1.5px solid var(--line);
+    border-radius: 16px; padding: 6px 6px 6px 18px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .new-list-form:focus-within { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
+  .new-list-input {
+    border: none; background: none; outline: none;
+    font-size: 14px; font-weight: 500; color: var(--ink);
+    min-width: 200px;
+  }
+  .new-list-input::placeholder { color: var(--ink-3); }
+
+  /* ── Cards grid ──────────────────────────────────────────────────────
+     auto-fill + minmax creates a responsive grid:
+       ~1240px wide  → ~4 columns
+       ~720px wide   → ~2 columns
+       ~360px wide   → 1 column
+     No media queries needed — the browser handles the reflow.
+  ─────────────────────────────────────────────────────────────────── */
+  .lists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  /* ── Individual list card ────────────────────────────────────────────
+     The entire card is clickable (onclick navigates to the detail page).
+     position: relative is needed to anchor the absolute-positioned delete button.
+  ─────────────────────────────────────────────────────────────────── */
+  .list-card {
+    background: var(--surface); border-radius: 20px;
+    border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+    padding: 24px; display: flex; flex-direction: column; gap: 14px;
+    transition: box-shadow .2s, transform .2s; text-decoration: none; color: inherit;
+    position: relative;
+  }
+  /* Card lifts slightly on hover */
+  .list-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .list-card-title { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+  /* Bottom row: creation date on the left, status badge on the right */
+  .list-card-meta {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .list-card-date { font-size: 11px; color: var(--ink-3); font-weight: 500; letter-spacing: .04em; }
+
+  /* ── Status badge ────────────────────────────────────────────────────
+     Three visual states communicated to the user at a glance:
+       badge-empty    — no tasks added yet (grey)
+       badge-pending  — some tasks done, shows "X/Y" count (purple)
+       badge-done     — all tasks completed (green with checkmark)
+  ─────────────────────────────────────────────────────────────────── */
+  .list-card-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .badge-done    { background: var(--green-soft);   color: var(--green); }
+  .badge-pending { background: var(--primary-soft); color: var(--primary); }
+  .badge-empty   { background: var(--bg-tint);      color: var(--ink-3); }
+
+  /* ── Progress bar ────────────────────────────────────────────────────
+     Thin coloured bar showing the ratio of done tasks to total tasks.
+     Width is set inline as a percentage via Jinja2 (see template below).
+     Only shown when the list has at least one task.
+  ─────────────────────────────────────────────────────────────────── */
+  .list-card-progress {
+    height: 4px; border-radius: 99px; background: var(--line);
+    overflow: hidden;
+  }
+  .list-card-progress-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--green) 100%);
+    transition: width .4s ease; /* animates when the value changes */
+  }
+
+  /* ── Card delete button ──────────────────────────────────────────────
+     Hidden by default (opacity: 0); revealed when the card is hovered.
+     Positioned in the top-right corner of the card using absolute positioning.
+     The button is inside a <form> so it submits a POST request.
+     onclick="event.stopPropagation()" prevents the card's onclick
+     handler from also triggering (which would navigate to the detail page).
+  ─────────────────────────────────────────────────────────────────── */
+  .list-card-delete {
+    position: absolute; top: 14px; right: 14px;
+    width: 30px; height: 30px; border-radius: 8px;
+    border: none; background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-3); opacity: 0;
+    transition: opacity .15s, background .15s, color .15s;
+  }
+  .list-card:hover .list-card-delete { opacity: 1; } /* reveal on card hover */
+  .list-card-delete:hover { background: var(--accent-soft); color: var(--accent); }
+
+  /* ── Empty state ─────────────────────────────────────────────────────
+     Shown when the user has no lists yet.
+     grid-column: 1 / -1 makes it span the full grid width.
+  ─────────────────────────────────────────────────────────────────── */
+  .empty-state {
+    text-align: center; padding: 80px 20px;
+    grid-column: 1 / -1;
+  }
+  .empty-icon {
+    width: 56px; height: 56px; border-radius: 18px;
+    background: var(--bg-tint); color: var(--ink-3);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .empty-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .empty-sub { font-size: 14px; color: var(--ink-2); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container lists-page">
+
+  <!-- ── Page header ─────────────────────────────────────────────────────
+       Left side: user's full name (from current_user, injected by Flask-Login)
+                  + "My Lists" headline.
+       Right side: inline form to create a new list. Submits POST to /lists/new.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="lists-header">
+    <div>
+      {# current_user is the logged-in User object provided by Flask-Login #}
+      <p class="lists-eyebrow mono">{{ current_user.FirstName }} {{ current_user.LastName }}</p>
+      <h1 class="lists-headline">My Lists</h1>
+    </div>
+
+    <!-- Create-list form: text input + Create button in a pill container -->
+    <form method="POST" action="{{ url_for('new_list') }}" class="new-list-form">
+      <input class="new-list-input" type="text" name="title"
+             placeholder="New list name…" maxlength="200">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <!-- Plus icon inside the Create button -->
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Create
+      </button>
+    </form>
+  </div>
+
+  <!-- ── Lists grid ──────────────────────────────────────────────────────
+       Iterates over the `lists` context variable. If the list is empty,
+       shows the empty-state prompt instead.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="lists-grid">
+    {% if lists %}
+      {% for lst in lists %}
+        {#
+          Calculate the completion percentage for this list's progress bar.
+          Guard against division-by-zero when total_count is 0.
+          | int truncates to an integer (e.g. 66.6 → 66) for the CSS width value.
+        #}
+        {% set pct = (lst.done_count / lst.total_count * 100) | int if lst.total_count > 0 else 0 %}
+
+        <!--
+          List card. The entire card navigates to the detail page via onclick.
+          onclick uses window.location to programmatically navigate — CSS cursor:pointer
+          makes it look clickable. The delete button inside uses stopPropagation()
+          so its click doesn't also trigger the card navigation.
+        -->
+        <div class="list-card" onclick="window.location='{{ url_for('list_detail', list_id=lst.ListId) }}'" style="cursor:pointer;">
+
+          <!-- Delete list button (top-right corner, hidden until card hover) -->
+          <form method="POST" action="{{ url_for('delete_list', list_id=lst.ListId) }}"
+                onclick="event.stopPropagation()"
+                onsubmit="return confirm('Delete list &quot;{{ lst.Title }}&quot;?')">
+            <button type="submit" class="list-card-delete" title="Delete list">
+              <!-- X icon -->
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </form>
+
+          <!-- List title -->
+          <div class="list-card-title">{{ lst.Title }}</div>
+
+          {# Only render the progress bar if the list has at least one task #}
+          {% if lst.total_count > 0 %}
+            <div class="list-card-progress">
+              <!-- Width is set inline as a percentage (e.g. style="width: 60%") -->
+              <div class="list-card-progress-fill" style="width: {{ pct }}%"></div>
+            </div>
+          {% endif %}
+
+          <!-- Bottom meta row: date on left, status badge on right -->
+          <div class="list-card-meta">
+            {# %#d formats the day without a leading zero on Windows (e.g. "May 3" not "May 03") #}
+            <span class="list-card-date mono">{{ lst.CreatedAt.strftime('%b %#d') }}</span>
+
+            {# Three mutually exclusive badge states: #}
+            {% if lst.total_count == 0 %}
+              <!-- No tasks have been added yet -->
+              <span class="list-card-badge badge-empty">Empty</span>
+            {% elif lst.done_count == lst.total_count %}
+              <!-- Every task is done — celebrate with a green checkmark badge -->
+              <span class="list-card-badge badge-done">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                All done
+              </span>
+            {% else %}
+              <!-- Some tasks remain — show "done/total" count in purple -->
+              <span class="list-card-badge badge-pending">{{ lst.done_count }}/{{ lst.total_count }}</span>
+            {% endif %}
+          </div>
+
+        </div>
+      {% endfor %}
+
+    {% else %}
+      <!-- ── Empty state ──────────────────────────────────────────────────
+           Shown when the user has no lists yet. Spans the full grid width.
+      ──────────────────────────────────────────────────────────────────── -->
+      <div class="empty-state">
+        <div class="empty-icon">
+          <!-- Stacked lines icon representing an empty list -->
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <rect x="4" y="5" width="16" height="2.5" rx="1.25" fill="currentColor"/>
+            <rect x="4" y="11" width="12" height="2.5" rx="1.25" fill="currentColor"/>
+            <rect x="4" y="17" width="8"  height="2.5" rx="1.25" fill="currentColor"/>
+          </svg>
+        </div>
+        <p class="empty-title">No lists yet</p>
+        <p class="empty-sub">Type a name above and hit Create to get started.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

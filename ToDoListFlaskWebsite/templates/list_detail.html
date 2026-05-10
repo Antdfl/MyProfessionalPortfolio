@@ -1,0 +1,315 @@
+{#
+  list_detail.html — Single list detail page
+  ============================================
+  Shows the contents of one to-do list: its tasks, a progress bar,
+  a form to add new tasks, and a delete-list button.
+
+  Extends: base.html
+  Route: GET /lists/<list_id>  (requires login — see @login_required in main.py)
+
+  Context variables passed from main.py list_detail():
+    todo_list  — a List object. Key attributes and relationships:
+                   todo_list.ListId       → int primary key (used in form actions)
+                   todo_list.Title        → string list name
+                   todo_list.CreatedAt    → datetime the list was created
+                   todo_list.total_count  → int total number of tasks (model property)
+                   todo_list.done_count   → int number of completed tasks (model property)
+                   todo_list.tasks        → list of Task objects, ordered by CreatedAt.
+                                           Each Task has:
+                                             task.TaskId   → int primary key
+                                             task.TaskText → string task description
+                                             task.IsDone   → bool completion state
+
+  Page structure:
+    1. Back link         — "← All lists" navigation
+    2. Detail header     — list title, creation date, task count, delete button
+    3. Progress bar      — shown only when the list has at least one task
+    4. Task card         — scrollable list of task rows, each with toggle + delete
+    5. Add task row      — form at the bottom of the card to add a new task
+#}
+{% extends "base.html" %}
+{% block title %}{{ todo_list.Title }} — Listly{% endblock %}
+
+{# Page-specific CSS for the list detail view #}
+{% block extra_head %}
+<style>
+  /* Outer page wrapper; fadeIn animates the page on load */
+  .detail-page { padding: 44px 0 80px; animation: fadeIn .3s ease both; }
+
+  /* ── Page header ─────────────────────────────────────────────────────
+     Contains: back link (above), meta line (date + task count),
+     list title, and a row of action buttons (currently just Delete).
+  ─────────────────────────────────────────────────────────────────── */
+  .detail-header { margin-bottom: 32px; }
+  /* Small ALL-CAPS meta line showing date and task count */
+  .detail-meta {
+    font-size: 11px; font-weight: 500; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--ink-3); margin-bottom: 8px;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .detail-title { font-size: 30px; font-weight: 800; letter-spacing: -.025em; }
+  .detail-actions { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+
+  /* ── Task card container ─────────────────────────────────────────────
+     White rounded card that holds all task rows + the add-task row.
+     overflow: hidden clips child borders at the card's border-radius corners.
+  ─────────────────────────────────────────────────────────────────── */
+  .task-card {
+    background: var(--surface); border-radius: 24px;
+    border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  /* ── Task item row ───────────────────────────────────────────────────
+     Each row contains: [toggle button] [task text] [delete button]
+     border-bottom separates rows; last row has no border.
+  ─────────────────────────────────────────────────────────────────── */
+  .task-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--line-2);
+    transition: background .12s;
+  }
+  .task-item:last-of-type { border-bottom: none; }
+  .task-item:hover { background: var(--bg); } /* subtle highlight on hover */
+
+  /* ── Toggle button (checkbox) ────────────────────────────────────────
+     Rounded-square button that acts as a custom checkbox.
+     When the task is done (.done), it fills with the primary colour
+     and the SVG checkmark inside becomes visible (opacity: 1).
+  ─────────────────────────────────────────────────────────────────── */
+  .task-toggle {
+    flex-shrink: 0; width: 24px; height: 24px; border-radius: 8px;
+    border: 1.8px solid var(--line); background: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: background .15s, border-color .15s;
+    padding: 0;
+  }
+  .task-toggle:hover { border-color: var(--primary); }
+  /* Filled state when task is done */
+  .task-toggle.done { background: var(--primary); border-color: var(--primary); }
+  .task-toggle.done svg { opacity: 1; }
+  /* Checkmark SVG is hidden by default; shown only when .done */
+  .task-toggle svg { opacity: 0; transition: opacity .15s; }
+
+  /* ── Task text ───────────────────────────────────────────────────────
+     flex: 1 makes it fill all available space between the two buttons.
+     When done, text is struck through and greyed out.
+  ─────────────────────────────────────────────────────────────────── */
+  .task-text { flex: 1; font-size: 15px; font-weight: 500; color: var(--ink); line-height: 1.4; }
+  .task-text.done { text-decoration: line-through; color: var(--ink-3); }
+
+  /* ── Task delete button ──────────────────────────────────────────────
+     Hidden by default (opacity: 0); appears when the row is hovered.
+     Turns orange on its own hover to signal a destructive action.
+  ─────────────────────────────────────────────────────────────────── */
+  .task-delete {
+    flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px;
+    border: none; background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-3); opacity: 0; transition: opacity .15s, background .15s, color .15s;
+    padding: 0;
+  }
+  .task-item:hover .task-delete { opacity: 1; } /* reveal on row hover */
+  .task-delete:hover { background: var(--accent-soft); color: var(--accent); }
+
+  /* ── Add-task row ────────────────────────────────────────────────────
+     Sits at the bottom of the task card. Has a dashed placeholder icon,
+     a text input, and a submit button. Styled to look like a task row.
+  ─────────────────────────────────────────────────────────────────── */
+  .add-task-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 22px; background: var(--bg-tint);
+  }
+  /* Dashed box icon on the left of the add-task row */
+  .add-task-icon {
+    flex-shrink: 0; width: 24px; height: 24px; border-radius: 8px;
+    border: 1.8px dashed var(--line); display: flex; align-items: center;
+    justify-content: center; color: var(--ink-3);
+  }
+  .add-task-input {
+    flex: 1; border: none; background: none; outline: none;
+    font-size: 15px; font-weight: 500; color: var(--ink);
+  }
+  .add-task-input::placeholder { color: var(--ink-3); }
+  /* Small purple "+" submit button on the right */
+  .add-task-btn {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--primary); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: white; transition: opacity .15s, transform .1s;
+    flex-shrink: 0;
+  }
+  .add-task-btn:hover { opacity: .9; }
+  .add-task-btn:active { transform: scale(.93); } /* press-in effect on click */
+
+  /* ── Empty task list state ───────────────────────────────────────────
+     Placeholder text shown when the list has no tasks yet.
+  ─────────────────────────────────────────────────────────────────── */
+  .tasks-empty {
+    padding: 48px 24px; text-align: center; color: var(--ink-3);
+    font-size: 14px;
+  }
+
+  /* ── Progress bar ────────────────────────────────────────────────────
+     Shows completion ratio above the task card.
+     Only rendered when the list has at least one task (see template below).
+  ─────────────────────────────────────────────────────────────────── */
+  .progress-bar-wrap { margin-bottom: 28px; }
+  /* Label row: "PROGRESS" on left, "done / total" count on right */
+  .progress-bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; font-weight: 600; color: var(--ink-2);
+    margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .progress-bar {
+    height: 6px; border-radius: 99px; background: var(--line); overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--green) 100%);
+    transition: width .5s ease; /* smooth animation when a task is toggled */
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-sm detail-page">
+
+  <!-- Back link: returns to the lists dashboard -->
+  <a href="{{ url_for('lists') }}" class="back-link">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    All lists
+  </a>
+
+  <!-- ── List header ─────────────────────────────────────────────────────
+       Shows creation date, task count, the list title, and a Delete button.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="detail-header">
+    <div class="detail-meta">
+      {# %#d = day without leading zero on Windows; e.g. "May 3, 2025" not "May 03, 2025" #}
+      <span class="mono">{{ todo_list.CreatedAt.strftime('%b %#d, %Y') }}</span>
+      <span>·</span>
+      {# Pluralise "task" / "tasks" depending on the count #}
+      <span class="mono">{{ todo_list.total_count }} task{{ 's' if todo_list.total_count != 1 }}</span>
+    </div>
+    <h1 class="detail-title">{{ todo_list.Title }}</h1>
+
+    <!-- Action buttons row (currently only Delete list) -->
+    <div class="detail-actions">
+      <!--
+        Delete list form. onsubmit shows a browser confirm dialog before
+        sending the POST request to prevent accidental deletion.
+        cascade delete in the model automatically removes all tasks too.
+      -->
+      <form method="POST" action="{{ url_for('delete_list', list_id=todo_list.ListId) }}"
+            onsubmit="return confirm('Delete this list and all its tasks?')">
+        <button type="submit" class="btn btn-danger-soft btn-sm">
+          <!-- X icon -->
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          Delete list
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {#
+    Progress bar section.
+    Only shown when the list has at least one task (avoids division by zero).
+    pct is the integer completion percentage, e.g. 60 for "3 of 5 done".
+  #}
+  {% if todo_list.total_count > 0 %}
+    {% set pct = (todo_list.done_count / todo_list.total_count * 100) | int %}
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label">
+        <span>Progress</span>
+        <span>{{ todo_list.done_count }} / {{ todo_list.total_count }}</span>
+      </div>
+      <div class="progress-bar">
+        <!-- Width percentage is set inline so it reflects the current completion state -->
+        <div class="progress-bar-fill" style="width: {{ pct }}%"></div>
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ── Task card ────────────────────────────────────────────────────────
+       White rounded container holding all task rows + the add-task form.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="task-card">
+
+    {# Render task rows if any exist, otherwise show placeholder text #}
+    {% if todo_list.tasks %}
+      {% for task in todo_list.tasks %}
+        <!-- One task row: [toggle] [text] [delete] -->
+        <div class="task-item">
+
+          <!-- Toggle done/undone: submits POST to /tasks/<task_id>/toggle -->
+          <form method="POST" action="{{ url_for('toggle_task', task_id=task.TaskId) }}">
+            <!--
+              The .done CSS class is applied when task.IsDone is True.
+              It fills the checkbox with purple and shows the checkmark SVG.
+              The title attribute provides an accessibility tooltip.
+            -->
+            <button type="submit"
+                    class="task-toggle {% if task.IsDone %}done{% endif %}"
+                    title="{% if task.IsDone %}Mark undone{% else %}Mark done{% endif %}">
+              <!-- White checkmark icon (invisible until task is done) -->
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1.5 6l3 3 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </form>
+
+          <!-- Task text; .done class adds strikethrough and grey colour -->
+          <span class="task-text {% if task.IsDone %}done{% endif %}">{{ task.TaskText }}</span>
+
+          <!-- Delete task: submits POST to /tasks/<task_id>/delete -->
+          <form method="POST" action="{{ url_for('delete_task', task_id=task.TaskId) }}">
+            <button type="submit" class="task-delete" title="Delete task">
+              <!-- X icon -->
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </form>
+
+        </div>
+      {% endfor %}
+    {% else %}
+      <!-- Empty state: list exists but has no tasks yet -->
+      <div class="tasks-empty">No tasks yet — add one below.</div>
+    {% endif %}
+
+    <!-- ── Add-task row ───────────────────────────────────────────────────
+         Sits at the very bottom of the card.
+         Submits POST to /lists/<list_id>/tasks/add.
+         autocomplete="off" prevents the browser from suggesting previous inputs,
+         which would be confusing (tasks are different every time).
+    ──────────────────────────────────────────────────────────────────── -->
+    <form method="POST" action="{{ url_for('add_task', list_id=todo_list.ListId) }}"
+          class="add-task-row">
+      <!-- Dashed placeholder icon (decorative, not interactive) -->
+      <div class="add-task-icon">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <!-- maxlength="500" matches the TaskText column limit defined in models.py -->
+      <input class="add-task-input" type="text" name="task_text"
+             placeholder="Add a task…" maxlength="500" autocomplete="off">
+      <!-- Submit button: small purple "+" circle -->
+      <button type="submit" class="add-task-btn" title="Add task">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </form>
+
+  </div>
+
+</div>
+{% endblock %}

@@ -20,7 +20,8 @@ Other details. We need to use the SQLAlchemy python library so to call a PostreS
 
 ### Database Design 
 
-The table "users" that contains all the data necessary for each user with the fields 
+The table "users" that contains all the data necessary for each user with the fields
+(one to many relationship towards the table lists): 
 | Column Name  | Data type     |Nullable  |Key          |Notes                    |
 | ------------ | ------------- | -------- | ----------- | ----------------------- |
 | UserId       | integer       |          | Primary key |                         | 
@@ -29,18 +30,20 @@ The table "users" that contains all the data necessary for each user with the fi
 | EmailAddress | string(255)   | False    |             |                         | 
 | Password     | string(255)   | False    |             |                         | 
 | CreatedAt    | DateTime      |          |             | User's Creation date    |
------------------------------------------------------------------------------------
 
-The table "lists":   
-| Column Name  | Data type    | Nullable  | Key           |Notes                   |
-| ------------ | ------------ | --------- | ------------- | ---------------------- |      
-| ListId       | Integer      |           |  Primary Key  |                        |
-| UserId       | Integer      |  False    |  Foreign Key  |                        |
-| Title        | string(200)  |  False    |               |                        | 
-| CreatedAt    | Datetime     |  False    |               | Date of list creation  |
-------------------------------------------------------------------------------------
 
-The table "Task"
+The table "lists" that contains all the lists associated to a user.
+(many to 1 relatiosnhip towards the table users):   
+| Column Name  | Data type     | Nullable  | Key          | Notes                   |
+| ------------ | ------------- | --------- | ------------ | ----------------------- |         
+| ListId       | Integer      |           |  Primary Key  |                         |
+| UserId       | Integer      |  False    |  Foreign Key  |                         |
+| Title        | string(200)  |  False    |               |                         | 
+| CreatedAt    | Datetime     |  False    |               | Date of list creation   |
+
+
+The table "Task" that contains all the task contained in a list
+(many to one relationship towards the list table):
 | Column Name  | Data type     | Nullable  | Key          | Notes                   |
 | ------------ | ------------- | --------- | ------------ | ----------------------- |                   
 | TaskId       | Integer       |           | Primary Key  |                         |
@@ -48,6 +51,7 @@ The table "Task"
 | TaskText     | string(500)   | False     |              |                         |  
 | Isdone       | boolean       | False     |              | Default=False           | 
 | CreatedAt    | False         |           |              | Date of task creation   |
+
 
 ### Claude Code Prompt
 I have created a website layout with Claude Design to use coupled with Claude. 
