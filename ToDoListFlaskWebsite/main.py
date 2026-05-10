@@ -36,6 +36,12 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, List, Task
+from dotenv import load_dotenv
+
+load_dotenv()  
+
+# GLOBAL CONFIGURATION
+PWD_LENGTH_MIN = 8 # minimum password length requirement for registration
 
 app = Flask(__name__)
 
@@ -134,17 +140,17 @@ def register():
         # Validate: all fields must be filled in
         if not all([first_name, last_name, email, password]):
             flash('All fields are required.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', pwd_min=PWD_LENGTH_MIN)
 
         # Validate: minimum password length
-        if len(password) < 6:
-            flash('Password must be at least 6 characters.', 'error')
-            return render_template('register.html')
+        if len(password) < PWD_LENGTH_MIN:
+            flash(f'Password must be at least {PWD_LENGTH_MIN} characters.', 'error')
+            return render_template('register.html', pwd_min=PWD_LENGTH_MIN)
 
         # Validate: no duplicate accounts for the same email
         if User.query.filter_by(EmailAddress=email).first():
             flash('An account with this email already exists.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', pwd_min=PWD_LENGTH_MIN)
 
         # Create the new user.
         # generate_password_hash() stores the password as a secure hash
@@ -164,7 +170,7 @@ def register():
         flash(f'Welcome, {first_name}!', 'success')
         return redirect(url_for('lists'))
 
-    return render_template('register.html')
+    return render_template('register.html', pwd_min=PWD_LENGTH_MIN)
 
 
 @app.route('/login', methods=['GET', 'POST'])
