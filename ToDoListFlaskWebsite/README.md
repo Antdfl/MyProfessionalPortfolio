@@ -57,7 +57,7 @@ The table "Task" that contains all the task contained in a list
 I have created a website layout with Claude Design to use coupled with Claude. 
 
 **Here's the prompt.**
-Create a Flask website keeping into consideration the README.md file present in this folder with the exlusion of test and production parts. These are the istruction at layout level --> Fetch this design file, read its readme, and implement the relevant aspects of the design. https://api.anthropic.com/v1/design/h/xdnmMtNZTUZtOSmydbfTnA?open_file=Todo+List.html
+Create a Flask website keeping into consideration the README.md file present in this folder with the exlusion of test and production parts. These are the istruction at layout level --> Fetch this design file, read its readme, and implement the relevant aspects of the design. https://api.anthropic.com/....
 
 
 ## DESIGN AND IMPLEMENTATION DETAILS
