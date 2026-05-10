@@ -1,6 +1,6 @@
 # ANALYSIS AND DESIGN DOCUMENT
 
-## REQUIREMENTS
+## 1. REQUIREMENTS
 
 Today, you are going to build a todo list website. This is a right of passage for any developer.
 
@@ -10,7 +10,7 @@ Here is a website for inspiration:
 
 https://flask.io/new
 
- ## FUNCTIONAL ANALYSIS
+ ## 2. FUNCTIONAL ANALYSIS
 
 1. Design and prototype the structure(pages to create) of the website at layout level
 2. Specify what are the main website functionalities.
@@ -24,7 +24,7 @@ The table "users" that contains all the data necessary for each user with the fi
 (one to many relationship towards the table lists): 
 | Column Name  | Data type     |Nullable  |Key          |Notes                    |
 | ------------ | ------------- | -------- | ----------- | ----------------------- |
-| UserId       | integer       |          | Primary key |                         | 
+| UserId       | integer       | No       | Primary key |                         | 
 | FirstName    | string(100)   | False    |             |                         | 
 | LastName     | string(100)   | False    |             |                         | 
 | EmailAddress | string(255)   | False    |             |                         | 
@@ -36,10 +36,10 @@ The table "lists" that contains all the lists associated to a user.
 (many to 1 relatiosnhip towards the table users):   
 | Column Name  | Data type     | Nullable  | Key          | Notes                   |
 | ------------ | ------------- | --------- | ------------ | ----------------------- |         
-| ListId       | Integer      |           |  Primary Key  |                         |
-| UserId       | Integer      |  False    |  Foreign Key  |                         |
-| Title        | string(200)  |  False    |               |                         | 
-| CreatedAt    | Datetime     |  False    |               | Date of list creation   |
+| ListId       | Integer       |  No       |  Primary Key |                         |
+| UserId       | Integer       |  False    |  Foreign Key |                         |
+| Title        | string(200)   |  False    |              |                         | 
+| CreatedAt    | Datetime      |  False    |              | Date of list creation   |
 
 
 The table "Task" that contains all the task contained in a list
@@ -60,11 +60,9 @@ I have created a website layout with Claude Design to use coupled with Claude.
 Create a Flask website keeping into consideration the README.md file present in this folder with the exlusion of test and production parts. These are the istruction at layout level --> Fetch this design file, read its readme, and implement the relevant aspects of the design. https://api.anthropic.com/....
 
 
-## DESIGN AND IMPLEMENTATION DETAILS
+## 3. DESIGN AND IMPLEMENTATION DETAILS
 
-TO DO LIST. As we enter into more detail of the project, we need to do for the best website outcomes in terms of layout, maintenance and usability. 
-
-### At Code level 
+### 3.1 At Code level 
 I divided the project into smaller parts:
 
 -  Connect the Flask application with the SQLite database.
@@ -75,16 +73,76 @@ I divided the project into smaller parts:
 -  Implement delete functionality for lists and single tasks.
 -  Improve navigation and overall styling.
 
-TO DO
-1. Add some diagnostic features to make visibile the database connection problems and fallback.
-2. Make the code easily debuggable and maintenable
+
+### 3.2 ADDED UI INTERNATIONALISATION
+- All UI labels in the three supported languages.
+. Keys prefixed by page (nav_, idx_, reg_, login_, lists_, detail_, flash_).
+- {n} and {name} are runtime placeholders replaced by get_label().
+
+Created a new table SiteLabel
+| Column Name  | Data type     | Nullable  | Key          | Notes                   |
+| ------------ | ------------- | --------- | ------------ | ----------------------- |  
+| LabelId      | Integer       | No        | Primary Key  |                         |
+| LabelKey     | String(100)   | No        |              |                         |
+| Lang         | String(5)     | No        |              |                         |
+| LabelValue   | String(1000)  | No        |              |                         |
 
 
-### Test environment
-1. Prepare a local Postgres sql Container for local test. 
-2. Test it locally in a development environment.
+### 3.3 LIST RENAME
+1. Objective
+Add the ability for authenticated users to rename an existing to-do list directly from the list detail page, without navigating to a separate form.
 
-### Production relaese  
+2. Affected Files
+File	Type of change
+ToDoListFlaskWebsite/main.py	Backend — new route + i18n labels
+ToDoListFlaskWebsite/templates/list_detail.html	Frontend — inline edit UI
+
+3. Backend Changes (main.py)
+3.1 New Route
+POST /lists/<list_id>/rename
+Auth: @login_required — rejects unauthenticated requests.
+Ownership check: the list is fetched with both ListId and UserId constraints (first_or_404), preventing one user from renaming another user's list.
+Validation: empty or whitespace-only titles are silently discarded; the existing title is preserved.
+Response: flashes a localised success message and redirects back to the detail page.
+3.2 New i18n Labels
+Five new entries added to SEED_LABELS (EN / IT / ES):
+flash_list_renamed	Success flash message after rename
+detail_rename_btn	Tooltip on the pencil button
+detail_save_btn	Submit button label
+detail_cancel_btn	Cancel button label
+Labels are inserted into the database at startup by seed_labels(), which skips rows that already exist — no migration required.
+
+4. Frontend Changes (list_detail.html)
+4.1 Interaction Design
+The rename feature follows an inline edit pattern:
+The list title is displayed normally inside a .title-wrap container.
+A pencil icon button (.rename-btn) is hidden by default and revealed on hover via CSS.
+Clicking the pencil hides .title-wrap and shows the .rename-form (a standard <form> with method="POST").
+The text input is pre-filled with the current title and immediately focused and selected.
+The user either submits (Save) or cancels (Cancel), which restores the title display.
+No JavaScript framework is required — the toggle is handled by two plain functions (startRename / cancelRename) that set display styles.
+4.2 CSS Added
+Class	Purpose
+.title-wrap	Flex container for title + pencil
+.rename-btn	Pencil trigger; opacity 0 → 1 on hover
+.rename-form	Hidden by default; shown inline on activation
+.rename-input	Styled to match the < h1 > typographic weight underline-only border to signal editability
+
+5. Security Considerations
+The rename endpoint verifies list ownership server-side; the client-side UI is convenience only.
+Input is sanitised with .strip() before writing to the database.
+The form uses POST (not GET), preventing the new title from appearing in server logs or browser history.
+No raw SQL is used; the update goes through SQLAlchemy's ORM, which parameterises all queries.
+
+6. No-Migration Deployment
+The schema is unchanged — only the Title column of an existing row is updated. The new SEED_LABELS entries are inserted automatically at startup by seed_labels(). No manual database intervention is needed.
+
+
+### 3.4 Test environment
+1. Prepare a local Postgres sql Container for local test. Done
+2. Test it locally in a development environment. Done
+
+### 3.5 Production relaese  
 -  After the positive test locally, prepare the folder /vendor to deploy into the Production Linux environment. 
 -  Install the source code into production, make all the settings (.htaccess, environmental variabile, flask setup)
 

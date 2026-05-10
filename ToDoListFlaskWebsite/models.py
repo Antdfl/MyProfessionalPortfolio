@@ -137,3 +137,26 @@ class Task(db.Model):
     # Defaults to False (not done) on creation; toggled via the toggle_task route
     IsDone   = db.Column(db.Boolean, default=False, nullable=False)
     CreatedAt = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SiteLabel(db.Model):
+    """
+    Stores translatable UI labels for multi-language support.
+
+    Table: site_labels
+    Each row holds one label string for one language. The pair (LabelKey, Lang)
+    is unique — enforced by the UniqueConstraint below.
+
+    Supported Lang values: 'en', 'it', 'es'
+    """
+
+    __tablename__ = 'site_labels'
+
+    LabelId    = db.Column(db.Integer, primary_key=True)
+    LabelKey   = db.Column(db.String(100), nullable=False)
+    Lang       = db.Column(db.String(5),   nullable=False)
+    LabelValue = db.Column(db.String(1000), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('LabelKey', 'Lang', name='uq_site_label_lang'),
+    )

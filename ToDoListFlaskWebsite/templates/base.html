@@ -8,23 +8,20 @@
     1. The full HTML document structure (<!DOCTYPE>, <head>, <body>).
     2. Global CSS (design tokens, reset, typography, nav, buttons, forms, flash messages).
     3. The sticky navigation bar with conditional links based on login state.
-    4. Flash message rendering (success / error / info banners).
+    4. Language-switcher dropdown (EN / IT / ES) in the top-right corner.
+    5. Flash message rendering (success / error / info banners).
 
   Blocks that child templates can override or fill in:
     {% block title %}         — page <title> text (default: "Listly")
     {% block extra_head %}    — additional <style> or <script> tags in <head>
     {% block content %}       — the main page body (below the nav)
 
-  Jinja2 global variables available in every template (provided by Flask):
-    current_user              — the logged-in User object, or an anonymous user
-                                (current_user.is_authenticated = False for guests)
-    request.endpoint          — the name of the active Flask route function,
-                                used here to highlight the active nav link
-    url_for('route_name')     — generates the URL for a named Flask route
-    get_flashed_messages()    — retrieves one-time messages set via flash() in Python
+  Context variables injected by inject_labels() in main.py (available everywhere):
+    L             — dict of label strings for the current language (e.g. L.nav_login)
+    current_lang  — the active language code: 'en', 'it', or 'es'
 #}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_lang }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,69 +36,58 @@
     /* ── Design tokens ──────────────────────────────────────────────────
        CSS custom properties (variables) that define the colour palette
        and shadow scale used consistently across all pages.
-       Change a value here and it updates everywhere automatically.
-       oklch() is a perceptually uniform colour model (L=lightness,
-       C=chroma, H=hue); more readable than hex for colour adjustments.
     ─────────────────────────────────────────────────────────────────── */
     :root {
-      --bg:           oklch(98% 0.006 85);   /* warm off-white page background */
-      --bg-tint:      oklch(96% 0.012 280);  /* slightly purple tint, used for hover states */
-      --surface:      #ffffff;               /* pure white card / form backgrounds */
-      --ink:          oklch(22% 0.02 280);   /* near-black for primary text */
-      --ink-2:        oklch(45% 0.02 280);   /* mid-grey for secondary text */
-      --ink-3:        oklch(62% 0.02 280);   /* light grey for placeholder / meta text */
-      --line:         oklch(92% 0.01 280);   /* border / divider colour */
-      --line-2:       oklch(96% 0.008 280);  /* subtle intra-card divider */
-      --primary:      oklch(56% 0.20 280);   /* main brand purple */
-      --primary-deep: oklch(42% 0.18 280);   /* darker purple for gradients */
-      --primary-soft: oklch(94% 0.04 280);   /* very light purple for focus rings and badges */
-      --accent:       oklch(72% 0.16 30);    /* warm orange for destructive / danger actions */
-      --accent-soft:  oklch(95% 0.04 30);    /* light orange background for danger badges */
-      --green:        oklch(64% 0.14 155);   /* success / "all done" green */
-      --green-soft:   oklch(94% 0.05 155);   /* light green background for success badges */
-      --yellow:       oklch(80% 0.13 85);    /* reserved for future warning states */
-      --shadow-sm: 0 1px 2px rgba(40,25,80,.04), 0 2px 6px rgba(40,25,80,.04);   /* card resting shadow */
-      --shadow-md: 0 4px 14px rgba(40,25,80,.06), 0 14px 40px rgba(40,25,80,.08); /* card hover shadow */
-      --shadow-lg: 0 10px 30px rgba(40,25,80,.10), 0 30px 80px rgba(40,25,80,.14); /* modal / overlay shadow */
+      --bg:           oklch(98% 0.006 85);
+      --bg-tint:      oklch(96% 0.012 280);
+      --surface:      #ffffff;
+      --ink:          oklch(22% 0.02 280);
+      --ink-2:        oklch(45% 0.02 280);
+      --ink-3:        oklch(62% 0.02 280);
+      --line:         oklch(92% 0.01 280);
+      --line-2:       oklch(96% 0.008 280);
+      --primary:      oklch(56% 0.20 280);
+      --primary-deep: oklch(42% 0.18 280);
+      --primary-soft: oklch(94% 0.04 280);
+      --accent:       oklch(72% 0.16 30);
+      --accent-soft:  oklch(95% 0.04 30);
+      --green:        oklch(64% 0.14 155);
+      --green-soft:   oklch(94% 0.05 155);
+      --yellow:       oklch(80% 0.13 85);
+      --shadow-sm: 0 1px 2px rgba(40,25,80,.04), 0 2px 6px rgba(40,25,80,.04);
+      --shadow-md: 0 4px 14px rgba(40,25,80,.06), 0 14px 40px rgba(40,25,80,.08);
+      --shadow-lg: 0 10px 30px rgba(40,25,80,.10), 0 30px 80px rgba(40,25,80,.14);
     }
 
-    /* ── Reset ──────────────────────────────────────────────────────────
-       Removes browser default margins, padding, and list bullets so
-       every element starts from a predictable baseline.
-    ─────────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ul { list-style: none; }
-    button, input, select, textarea { font-family: inherit; } /* inputs use body font, not browser default */
+    button, input, select, textarea { font-family: inherit; }
 
-    /* ── Base ───────────────────────────────────────────────────────────
-       Page-level defaults applied to every page.
-    ─────────────────────────────────────────────────────────────────── */
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       background: var(--bg);
       color: var(--ink);
       min-height: 100vh;
-      -webkit-font-smoothing: antialiased; /* smoother font rendering on macOS/iOS */
+      -webkit-font-smoothing: antialiased;
     }
     .serif { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-style: italic; letter-spacing: -.01em; }
     .mono  { font-family: 'JetBrains Mono', 'Courier New', monospace; }
     a { color: inherit; }
 
     /* ── Navigation ─────────────────────────────────────────────────────
-       Sticky top bar that stays visible while scrolling.
-       backdrop-filter: blur creates a frosted-glass effect over page content.
+       Sticky top bar with frosted-glass effect.
     ─────────────────────────────────────────────────────────────────── */
     .nav {
-      position: sticky; top: 0; z-index: 50; /* stays above all page content */
-      background: rgba(251,249,245,.88);       /* semi-transparent so blur shows through */
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(251,249,245,.88);
       backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);     /* Safari prefix required */
+      -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--line);
     }
     .nav-inner {
-      max-width: 1240px; margin: 0 auto; /* centred, won't stretch wider than 1240px */
+      max-width: 1240px; margin: 0 auto;
       padding: 14px 40px;
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
     }
     .logo {
       display: flex; align-items: center; gap: 10px;
@@ -115,16 +101,20 @@
       flex-shrink: 0;
     }
     .logo-text { font-weight: 800; font-size: 17px; letter-spacing: -.02em; }
-    .nav-links { display: flex; align-items: center; gap: 4px; }
+
+    /* nav-links + lang-switcher share the right side */
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-links  { display: flex; align-items: center; gap: 4px; }
+
     .nav-link {
-      padding: 8px 14px; border-radius: 999px; /* pill shape */
+      padding: 8px 14px; border-radius: 999px;
       font-weight: 500; font-size: 14px;
       text-decoration: none; color: var(--ink-2);
       transition: background .15s, color .15s;
       border: none; background: none; cursor: pointer;
     }
     .nav-link:hover, .nav-link.active { background: var(--bg-tint); color: var(--ink); }
-    .btn-nav-cta { /* solid "Sign up" button in the nav */
+    .btn-nav-cta {
       padding: 8px 16px; border-radius: 999px;
       font-weight: 600; font-size: 14px;
       text-decoration: none; color: #fff;
@@ -134,17 +124,31 @@
     }
     .btn-nav-cta:hover { opacity: .85; }
 
+    /* ── Language switcher dropdown ──────────────────────────────────────
+       A compact <select> in the nav right side.
+       Separated from auth links by a thin vertical divider.
+    ─────────────────────────────────────────────────────────────────── */
+    .lang-switcher {
+      display: flex; align-items: center;
+      padding-left: 12px; border-left: 1px solid var(--line);
+    }
+    .lang-select {
+      appearance: none; -webkit-appearance: none;
+      padding: 6px 28px 6px 10px; border-radius: 10px;
+      border: 1.5px solid var(--line); background: var(--surface);
+      font-size: 13px; font-weight: 600; color: var(--ink);
+      cursor: pointer; outline: none;
+      /* Down-arrow via SVG background */
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 9px center;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .lang-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+    .lang-select:hover { border-color: var(--ink-2); }
+
     /* ── Buttons ─────────────────────────────────────────────────────────
-       Reusable button classes used throughout all templates.
-
-       Variants:
-         .btn-primary      — purple, for primary actions (Create, Submit)
-         .btn-outline      — white with border, for secondary actions
-         .btn-ghost        — transparent, for low-emphasis actions
-         .btn-danger-soft  — light orange, for destructive actions (Delete)
-
-       Modifier:
-         .btn-sm           — smaller padding / font size
+       .btn-primary, .btn-outline, .btn-ghost, .btn-danger-soft, .btn-sm
     ─────────────────────────────────────────────────────────────────── */
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
@@ -153,7 +157,7 @@
       text-decoration: none; border: none; cursor: pointer;
       transition: opacity .15s, transform .1s;
     }
-    .btn:active { transform: scale(.97); } /* slight press-in feel on click */
+    .btn:active { transform: scale(.97); }
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-primary:hover { opacity: .9; }
     .btn-outline {
@@ -171,12 +175,7 @@
     .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 12px; }
 
     /* ── Forms ───────────────────────────────────────────────────────────
-       Reusable form components used on the login and register pages.
-
-         .form-group   — wraps a label + input in a vertical stack
-         .form-label   — ALL-CAPS small label above the input field
-         .form-input   — the actual text/email/password input box
-         .form-row     — two-column side-by-side layout (used for first/last name)
+       .form-group, .form-label, .form-input, .form-row
     ─────────────────────────────────────────────────────────────────── */
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     .form-label {
@@ -194,11 +193,7 @@
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
     /* ── Flash messages ──────────────────────────────────────────────────
-       One-time notification banners generated by flash() calls in main.py.
-       Flask-Login and our own routes use three categories:
-         'error'   → red/orange background (flash-error)
-         'success' → green background      (flash-success)
-         'info'    → purple background     (flash-info)
+       Categories: 'error' → flash-error, 'success' → flash-success, 'info' → flash-info
     ─────────────────────────────────────────────────────────────────── */
     .flash-wrap { max-width: 760px; margin: 16px auto 0; padding: 0 28px; }
     .flash {
@@ -210,9 +205,7 @@
     .flash-info    { background: var(--primary-soft); color: var(--primary); }
 
     /* ── Layout helpers ──────────────────────────────────────────────────
-         .container    — centred content area, max 980px wide
-         .container-sm — narrower centred area, max 760px wide (used on list detail)
-         .back-link    — "← All lists" style navigation link
+         .container, .container-sm, .back-link
     ─────────────────────────────────────────────────────────────────── */
     .container    { max-width: 980px; margin: 0 auto; padding: 0 28px; }
     .container-sm { max-width: 760px; margin: 0 auto; padding: 0 28px; }
@@ -223,32 +216,21 @@
     }
     .back-link:hover { color: var(--ink); }
 
-    /* ── Animations ──────────────────────────────────────────────────────
-       fadeIn is used by child templates to animate page sections on load.
-       Apply with: animation: fadeIn .3s ease both;
-    ─────────────────────────────────────────────────────────────────── */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   </style>
 
-  {# Child templates inject additional <style> blocks here (e.g. page-specific CSS) #}
   {% block extra_head %}{% endblock %}
 </head>
 <body>
 
   <!-- ── Navigation bar ──────────────────────────────────────────────────
-       Shown on every page. Links change depending on login state:
-         Logged in  → "My Lists"  + "Log out"
-         Guest      → "Log in"    + "Sign up" (CTA button)
-       The active nav link gets the .active class by comparing
-       request.endpoint to the route name.
+       Right side: auth links  |  language dropdown (EN / IT / ES)
   ──────────────────────────────────────────────────────────────────── -->
   <nav class="nav">
     <div class="nav-inner">
 
-      <!-- Logo: clicking it always goes to the home/landing page -->
       <a href="{{ url_for('index') }}" class="logo">
         <div class="logo-icon">
-          <!-- Checkmark icon inside the logo square -->
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
             <path d="M2.5 7.5L6 11L12.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -256,34 +238,38 @@
         <span class="logo-text">Listly</span>
       </a>
 
-      <div class="nav-links">
-        {# current_user is provided by Flask-Login — always available in templates #}
-        {% if current_user.is_authenticated %}
-          {# Logged-in nav: show app links #}
-          <a href="{{ url_for('lists') }}"
-             class="nav-link {% if request.endpoint == 'lists' %}active{% endif %}">
-            My Lists
-          </a>
-          <a href="{{ url_for('logout') }}" class="nav-link">Log out</a>
-        {% else %}
-          {# Guest nav: show auth links #}
-          <a href="{{ url_for('login') }}"
-             class="nav-link {% if request.endpoint == 'login' %}active{% endif %}">
-            Log in
-          </a>
-          <a href="{{ url_for('register') }}" class="btn-nav-cta">Sign up</a>
-        {% endif %}
+      <div class="nav-right">
+        <div class="nav-links">
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('lists') }}"
+               class="nav-link {% if request.endpoint == 'lists' %}active{% endif %}">
+              {{ L.nav_my_lists }}
+            </a>
+            <a href="{{ url_for('logout') }}" class="nav-link">{{ L.nav_logout }}</a>
+          {% else %}
+            <a href="{{ url_for('login') }}"
+               class="nav-link {% if request.endpoint == 'login' %}active{% endif %}">
+              {{ L.nav_login }}
+            </a>
+            <a href="{{ url_for('register') }}" class="btn-nav-cta">{{ L.nav_signup }}</a>
+          {% endif %}
+        </div>
+
+        <!-- Language switcher: selecting an option navigates to /set-lang/<code> -->
+        <div class="lang-switcher">
+          <select class="lang-select"
+                  onchange="window.location='/set-lang/' + this.value"
+                  aria-label="Language">
+            <option value="en" {% if current_lang == 'en' %}selected{% endif %}>EN &nbsp;English</option>
+            <option value="it" {% if current_lang == 'it' %}selected{% endif %}>IT &nbsp;Italiano</option>
+            <option value="es" {% if current_lang == 'es' %}selected{% endif %}>ES &nbsp;Español</option>
+          </select>
+        </div>
       </div>
+
     </div>
   </nav>
 
-  <!-- ── Flash messages ────────────────────────────────────────────────
-       get_flashed_messages(with_categories=true) returns a list of
-       (category, message) tuples set by flash() calls in main.py.
-       Messages are consumed on the first render and won't show again.
-       The CSS class "flash-{{ category }}" maps to flash-error,
-       flash-success, or flash-info defined in the <style> block above.
-  ──────────────────────────────────────────────────────────────────── -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flash-wrap">
@@ -294,7 +280,6 @@
     {% endif %}
   {% endwith %}
 
-  {# Child templates render their unique page content here #}
   {% block content %}{% endblock %}
 
 </body>
