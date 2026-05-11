@@ -1,7 +1,7 @@
 # Project Retrospective — Image Watermark Tool
 
 **Author:** Antonio Di Felice  
-**Date:** April 2026  
+**Date:** April 20262  
 **Platform:** Desktop — Python / Tkinter / Pillow (Windows/macOS/Linux)
 
 ---
@@ -26,10 +26,10 @@ creating the layout from scratch proved time-consuming. The solution was to use 
 platform's AI-assisted generation feature, with a descriptive prompt:
 
 > *"A watermarking application styled as a classic Tkinter desktop interface — Windows 98 aesthetic,
-> grey bevelled borders, blue title bar, classic desktop controls. Features: image upload, watermark
-> text customisation (position, font size, opacity), download."*
+> grey bevelled borders, blue title bar, classic desktop controls. Features: image upload, watermark 
+> text customisation (position), download."*
 
-Figma generated a fully-fledged mockup including features outside the project scope. The iteration
+Figma Make generated a fully-fledged mockup including features outside the project scope. The iteration
 was then to strip it back to only what was needed — upload, position selector, download, clear — which
 produced the `prototype.png` used as the definitive layout contract.
 

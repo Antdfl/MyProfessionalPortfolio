@@ -73,7 +73,6 @@ I divided the project into smaller parts:
 -  Implement delete functionality for lists and single tasks.
 -  Improve navigation and overall styling.
 
-
 ### 3.2 ADDED UI INTERNATIONALISATION
 - All UI labels in the three supported languages.
 . Keys prefixed by page (nav_, idx_, reg_, login_, lists_, detail_, flash_).
@@ -86,11 +85,6 @@ Created a new table SiteLabel
 | LabelKey     | String(100)   | No        |              |                         |
 | Lang         | String(5)     | No        |              |                         |
 | LabelValue   | String(1000)  | No        |              |                         |
-
-
-### 3.3 LIST RENAME
-1. Objective
-Add the ability for authenticated users to rename an existing to-do list directly from the list detail page, without navigating to a separate form.
 
 2. Affected Files
 File	Type of change
@@ -137,12 +131,36 @@ No raw SQL is used; the update goes through SQLAlchemy's ORM, which parameterise
 6. No-Migration Deployment
 The schema is unchanged — only the Title column of an existing row is updated. The new SEED_LABELS entries are inserted automatically at startup by seed_labels(). No manual database intervention is needed.
 
+### 3.3 LIST RENAME
+1. Objective
+Add the ability for authenticated users to rename an existing to-do list directly from the list detail page, without navigating to a separate form.
 
-### 3.4 Test environment
+## 3.4 CACHING LANGUAGE LABELS
+
+To avoid invoking each time the user change the langiage in the drop down list, implemented a cache mechanism, so that all the data-related data is loaded only once. 
+
+- Add a module-level _label_cache dict (keyed by language code)
+- Add a _load_labels_for_lang() helper that queries the DB and stores into the cache
+- Update seed_labels() to prime the cache for all 3 languages after seeding
+- Update get_label() and inject_labels() to read from cache, querying DB only on a cache miss
+
+1. _label_cache: dict = {} (new, after seed_labels) — module-level dict keyed by language code ('en', 'it', 'es'). Lives for the lifetime of the process, so it survives across all requests.
+
+2. _load_labels_for_lang(lang) (new) — the single place that actually queries the DB. It runs SiteLabel.query.filter_by(Lang=lang).all(), builds the {LabelKey: LabelValue} dict, stores it in _label_cache[lang], and returns it. Called at most once per language per process lifetime.
+
+3. seed_labels() — after the existing DB seeding logic, now calls _load_labels_for_lang for all three languages. This pre-warms the cache at startup so the very first request is already served from memory.
+
+4. get_label() — replaced two SiteLabel.query calls with cache lookups. Pattern: _label_cache[lang] if lang in _label_cache else _load_labels_for_lang(lang). Fallback to English uses the same cache-first pattern.
+
+5. inject_labels() — replaced SiteLabel.query.filter_by(Lang=lang).all() with the same cache-first lookup. This context processor runs on every request, so this is where the savings are largest.
+
+Net result: after the first request per language (or after startup if seed_labels() runs), all label lookups are pure Python dict reads with zero DB round-trips.
+
+### 3.5 Test environment
 1. Prepare a local Postgres sql Container for local test. Done
 2. Test it locally in a development environment. Done
 
-### 3.5 Production relaese  
+### 3.6 Production relaese  
 -  After the positive test locally, prepare the folder /vendor to deploy into the Production Linux environment. 
 -  Install the source code into production, make all the settings (.htaccess, environmental variabile, flask setup)
 

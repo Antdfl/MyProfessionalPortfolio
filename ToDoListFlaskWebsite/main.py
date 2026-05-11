@@ -264,6 +264,9 @@ def seed_labels():
     A single db.session.commit() is issued at the end only when at least one new
     row was added, avoiding an unnecessary round-trip on subsequent starts.
 
+    After the DB write (or if nothing changed), all supported languages are loaded
+    into _label_cache so that every subsequent request is served from memory.
+
     Called once inside the ``if __name__ == '__main__'`` block after db.create_all().
     """
     changed = False
@@ -274,21 +277,39 @@ def seed_labels():
                 changed = True
     if changed:
         db.session.commit()
+    for lang in ('en', 'it', 'es'):
+        _load_labels_for_lang(lang)
+
+
+# Module-level label cache: {lang_code: {LabelKey: LabelValue}}.
+# Populated lazily on first use per language (or eagerly by seed_labels at startup).
+# Labels are static after seeding, so no invalidation is needed.
+_label_cache: dict = {}
+
+
+def _load_labels_for_lang(lang: str) -> dict:
+    """Query the DB for every label of *lang*, store the result in _label_cache, and return it."""
+    rows = SiteLabel.query.filter_by(Lang=lang).all()
+    _label_cache[lang] = {row.LabelKey: row.LabelValue for row in rows}
+    return _label_cache[lang]
 
 
 def get_label(key, **kwargs):
     """
     Return the label string for the current session language.
 
-    Falls back to English if the requested language has no entry.
+    Reads from the in-memory _label_cache (populated once per language).
+    Falls back to English if the requested language has no entry for the key.
     Placeholders like {n} or {name} in the value are replaced with kwargs.
     """
     lang = session.get('lang', 'en')
-    lbl = (
-        SiteLabel.query.filter_by(LabelKey=key, Lang=lang).first()
-        or SiteLabel.query.filter_by(LabelKey=key, Lang='en').first()
-    )
-    value = lbl.LabelValue if lbl else key
+    cache = _label_cache[lang] if lang in _label_cache else _load_labels_for_lang(lang)
+    value = cache.get(key)
+    if value is None and lang != 'en':
+        en_cache = _label_cache['en'] if 'en' in _label_cache else _load_labels_for_lang('en')
+        value = en_cache.get(key)
+    if value is None:
+        value = key
     for k, v in kwargs.items():
         value = value.replace(f'{{{k}}}', str(v))
     return value
@@ -299,16 +320,17 @@ def inject_labels():
     """
     Inject L (label dict) and current_lang into every template context.
 
+    Reads from the in-memory _label_cache — no database query after the first
+    request for each language.  Falls back to an empty dict on unexpected errors.
     Templates access labels via {{ L.some_key }}.
     current_lang is used by the language switcher to mark the active option.
     """
     try:
         lang = session.get('lang', 'en')
-        rows = SiteLabel.query.filter_by(Lang=lang).all()
-        L = {row.LabelKey: row.LabelValue for row in rows}
+        L = _label_cache[lang] if lang in _label_cache else _load_labels_for_lang(lang)
     except Exception:
         lang = 'en'
-        L = {}
+        L = _label_cache.get('en', {})
     return dict(L=L, current_lang=lang)
 
 
