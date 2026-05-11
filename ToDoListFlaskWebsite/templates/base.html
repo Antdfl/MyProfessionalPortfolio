@@ -258,7 +258,7 @@
         <!-- Language switcher: selecting an option navigates to /set-lang/<code> -->
         <div class="lang-switcher">
           <select class="lang-select"
-                  onchange="window.location='/set-lang/' + this.value"
+                  onchange="window.location='{{ url_for('set_lang', lang='LANG') }}'.replace('LANG', this.value)"
                   aria-label="Language">
             <option value="en" {% if current_lang == 'en' %}selected{% endif %}>EN &nbsp;English</option>
             <option value="it" {% if current_lang == 'it' %}selected{% endif %}>IT &nbsp;Italiano</option>
