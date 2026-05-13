@@ -71,7 +71,7 @@ Both the Google Translate and gTTS APIs silently fail or raise errors on inputs 
 **In-memory audio assembly**
 Each gTTS chunk is written directly to a shared `io.BytesIO` buffer via `write_to_fp()` rather than saving temporary files to disk. MP3 is a frame-based format, so appending frames from consecutive chunks produces a seamlessly playable file.
 
-**Rate-limit handling (two-layer)**
+#### Rate-limit handling (two-layer)
 
 - *Prevention*: a 1-second pause after every successful TTS request keeps the request rate within Google's undocumented threshold.
 - *Recovery*: a `gTTSError` 429 is caught and retried up to 4 times with exponential backoff (5 s, 10 s, 15 s, 20 s) before the error is re-raised.
@@ -79,17 +79,25 @@ Each gTTS chunk is written directly to a shared `io.BytesIO` buffer via `write_t
 **Progress display**
 Each of the three pipeline stages reports per-page or per-chunk progress using `\r` (carriage return) so updates overwrite the same terminal line rather than scrolling.
 
+**CLI interface (argparse) with interactive fallback**
+The script accepts all four inputs as optional command-line arguments via `argparse`. If an argument is omitted the script falls back to prompting the user interactively, preserving full backward compatibility. This makes the tool usable both by end users typing commands and by automated pipelines or shell scripts.
+
+**File path resolution**
+Relative filenames (e.g. `book.pdf`) are resolved from the script's own directory, so users can simply place files next to `main.py` regardless of which folder the terminal is open in. Absolute paths are passed through unchanged, allowing input and output to point anywhere on the filesystem independently.
+
 ---
 
 ## Usage
 
-Place the PDF file in the same directory as `main.py`, then run:
+### Interactive mode (original behaviour)
+
+Place the PDF in the same directory as `main.py`, then run:
 
 ```bash
 python main.py
 ```
 
-The script will prompt for:
+The script prompts for each value:
 
 ```text
 Enter the language of the PDF (e.g., 'en', 'it', 'es'):
@@ -98,10 +106,47 @@ Enter the language for the audiobook (e.g., 'en', 'it', 'es'):
 Enter the name for the output audiobook (without extension):
 ```
 
-The output MP3 is saved in the same directory.
+### Automated mode (argparse)
+
+All four arguments on one line — no prompts:
+
+```bash
+python main.py --file book.pdf --from-lang en --to-lang it --output audiobook
+```
+
+### Built-in help
+
+```bash
+python main.py --help
+```
+
+### Path resolution rules
+
+| `--file` value | PDF loaded from |
+| --- | --- |
+| `book.pdf` (relative) | same folder as `main.py` |
+| `C:\Users\...\book.pdf` (absolute) | that exact location |
+
+The same rule applies to `--output`. Input and output paths are resolved independently, so mixing relative and absolute is valid.
 
 ### Dependencies
 
 ```bash
 pip install PyPDF2 deep-translator gTTS
 ```
+
+> **Note:** always run the script with the project virtual environment activated:
+> `e:\code\MyProfessionalPortfolio\.venv\Scripts\activate`
+
+---
+
+## Test Plan
+
+Four path-resolution scenarios to validate the `argparse` interface and the file path logic.
+
+| # | Scenario | Input path | Output path | Expected result | Actual result |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Launched from VS Code terminal | Relative — file next to `main.py` | Relative — script folder | MP3 saved in script folder | |
+| 2 | Launched from external terminal (Documents) | Relative — file next to `main.py` | Relative — script folder | MP3 saved in script folder | |
+| 3 | Absolute input, relative output | Absolute — any location on disk | Relative — script folder | MP3 saved in script folder | |
+| 4 | Fully absolute | Absolute — any location on disk | Absolute — any location on disk | MP3 saved at specified absolute path | |
