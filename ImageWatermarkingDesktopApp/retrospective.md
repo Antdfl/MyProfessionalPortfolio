@@ -1,7 +1,7 @@
 # Project Retrospective — Image Watermark Tool
 
 **Author:** Antonio Di Felice  
-**Date:** April 20262  
+**Date:** April 2026  
 **Platform:** Desktop — Python / Tkinter / Pillow (Windows/macOS/Linux)
 
 ---
