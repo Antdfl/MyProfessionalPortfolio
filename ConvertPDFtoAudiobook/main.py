@@ -15,6 +15,7 @@ Dependencies: PyPDF2, deep-translator, gTTS
 """
 
 import os
+import argparse
 import PyPDF2
 from deep_translator import GoogleTranslator  # wrapper around Google Translate API
 from gtts import gTTS, gTTSError              # gTTSError lets us catch 429 rate-limit responses
@@ -124,21 +125,53 @@ def split_text(text, max_chars=CHUNK_SIZE):
 # ---------------------------------------------------------------------------
 # Language codes follow the BCP-47 / ISO 639-1 standard used by Google:
 #   'en' = English, 'it' = Italian, 'es' = Spanish, 'fr' = French, etc.
-pdf_language = input("Enter the language of the PDF (e.g., 'en' for English, 'it' for Italian, 'es' for Spanish): ")
-pdf_file = input("Enter the name of the PDF file (including the .pdf extension): ")
-output_language = input("Enter the language for the audiobook (e.g., 'en' for English, 'it' for Italian, 'es' for Spanish): ")
-output_audiobook_name = input("Enter the name for the output audiobook (without extension): ")
+#
+# All four arguments are optional in the parser (no required=True) so that
+# the script stays fully interactive when launched without arguments.
+# For each argument, the value is used if supplied on the command line;
+# otherwise input() prompts the user as before — preserving full backward
+# compatibility while also enabling automation:
+#
+#   Interactive (original behaviour):
+#       python main.py
+#
+#   Automated (new behaviour, no prompts):
+#       python main.py --file book.pdf --from-lang en --to-lang it --output audiobook
+#
+#   Mixed (prompt only for what is missing):
+#       python main.py --file book.pdf --from-lang en
+parser = argparse.ArgumentParser(
+    description="Convert a PDF file to an MP3 audiobook, with optional translation."
+)
+parser.add_argument("--file",      default=None, help="PDF filename (must be in the script directory)")
+parser.add_argument("--from-lang", default=None, help="Language of the PDF, e.g. 'en', 'it', 'es'")
+parser.add_argument("--to-lang",   default=None, help="Language of the audiobook, e.g. 'en', 'it', 'es'")
+parser.add_argument("--output",    default=None, help="Output filename without extension")
+args = parser.parse_args()
+
+# For each value: use the CLI argument if provided, otherwise prompt interactively.
+pdf_language          = args.from_lang    or input("Enter the language of the PDF (e.g., 'en' for English, 'it' for Italian, 'es' for Spanish): ")
+pdf_file              = args.file         or input("Enter the name of the PDF file (including the .pdf extension): ")
+output_language       = args.to_lang      or input("Enter the language for the audiobook (e.g., 'en' for English, 'it' for Italian, 'es' for Spanish): ")
+output_audiobook_name = args.output       or input("Enter the name for the output audiobook (without extension): ")
 
 
 # ---------------------------------------------------------------------------
 # Step 1 — Validate the PDF path
 # ---------------------------------------------------------------------------
-# Build an absolute path by joining the script directory with the filename
-# provided by the user. This means the PDF must sit in the same folder as
-# this script (or the user can type a relative/absolute path themselves).
-pdf_path = db_path / pdf_file
+# Path(pdf_file) resolves relative paths from the current working directory
+# (wherever the terminal is when the script is launched) and passes absolute
+# paths through unchanged. This is standard CLI behaviour.
+# Relative paths (e.g. "book.pdf") are resolved from the script's own directory
+# so the user can simply place files next to main.py without worrying about
+# which folder the terminal is open in. Absolute paths are used as-is, which
+# covers scenarios where the file lives somewhere else entirely (e.g. E:\temp\).
+pdf_input = Path(pdf_file)
+pdf_path = pdf_input if pdf_input.is_absolute() else db_path / pdf_file
+
 if not pdf_path.is_file():
-    print(f"Error: The file '{pdf_path}' does not exist.")
+    print(f"Error: The file '{pdf_path.resolve()}' does not exist.")
+    print(f"       Looking in: {pdf_path.parent.resolve()}")
     exit(1)
 
 
@@ -228,7 +261,10 @@ print(f"      Done — {total} chunks converted.      ")
 # ---------------------------------------------------------------------------
 # Step 5 — Write the final MP3 file to disk
 # ---------------------------------------------------------------------------
-output_path = db_path / f'{output_audiobook_name}.mp3'
+# Same resolution logic as the input: relative names go next to main.py,
+# absolute paths (e.g. E:\temp\audiobook) are used as-is.
+output_input = Path(f'{output_audiobook_name}.mp3')
+output_path = output_input if output_input.is_absolute() else db_path / output_input
 
 # getvalue() retrieves the entire byte content accumulated in the buffer.
 with open(output_path, 'wb') as f:
