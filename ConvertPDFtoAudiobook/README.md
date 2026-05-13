@@ -1,45 +1,107 @@
-# ANALYSIS AND DESIGN DOCUMENT
+# PDF to Audiobook Converter
+
+A Python command-line tool that converts any PDF file into an MP3 audiobook, with optional translation into a different language.
+
+---
 
 ## Requirements
 
-Too tired to read? Build a python script that takes a PDF file, identifies the text and converts the text to speech. Effectively creating a free audiobook.
+Given a PDF file, the tool must:
 
-AI text-to-speech has come so far. They can sound more lifelike than a real audiobook.
+1. Accept user inputs: PDF filename, PDF language, output language, output filename.
+2. Extract all readable text from the PDF.
+3. Translate the text when the source and target languages differ.
+4. Convert the text to natural-sounding speech and save it as an MP3 file.
+5. Display progress at each stage so the user is never left waiting without feedback.
 
+---
 
-Using what you've learnt about HTTP requests, APIs and Python scripting, create a program that can convert PDF files to speech.
+## Functional Analysis
 
-You right want to choose your own Text-To-Speech (TTS) API. But here are some you can consider:
+### Library Selection
 
-http://www.ispeech.org/api/#introduction
-https://cloud.google.com/text-to-speech/docs/basics
-https://aws.amazon.com/polly/
+The project deliberately avoids paid cloud APIs (AWS Polly, Google Cloud TTS) in favour of lightweight Python libraries that are free and easy to maintain.
 
-## FUNCTIONAL ANALYSIS
+| Concern | Library chosen | Reason |
+| --- | --- | --- |
+| PDF text extraction | [PyPDF2](https://pypi.org/project/PyPDF2/) | Pure-Python, no external binaries required |
+| Translation | [deep-translator](https://pypi.org/project/deep-translator/) | Thin wrapper over Google Translate; supports 100+ language pairs |
+| Text-to-speech | [gTTS](https://pypi.org/project/gTTS/) | Uses Google's neural TTS engine; natural-sounding output; free |
 
-At the beginning, I'm evaluating the different libraries and their ease to use and maintain. So, even though the trainer has suggested to use the cloud and API library, why can't I use simpler and effective Python libraries instead of invoking a web API?
+### TTS Library Comparison
 
-### TTS Python libraries 
-In reality I found some easier to use TTS(Text To Speech) libraries and source of inspiration to build this Python script.
+Before committing to gTTS, two alternatives were evaluated:
 
-- https://pypi.org/project/gTTS/ 
-https://gtts.readthedocs.io/en/latest/ --> gTTS (Google Text-to-Speech), a Python library and CLI tool to interface with Google Translate's text-to-speech API. Write spoken mp3 data to a file, a file-like object (bytestring) for further audio manipulation, or stdout. https://gtts.readthedocs.io/
+**pyttsx3** — works fully offline using the OS-native speech engine (SAPI5 on Windows). Fast and reliable, but the voice quality is robotic and fatiguing for long listening sessions.
 
-### PDF reading library
-- https://pypi.org/project/PyPDF2/ --> PyPDF2 is a free and open-source pure-python PDF library capable of splitting, merging, cropping, and transforming the pages of PDF files. It can also add custom data, viewing options, and passwords to PDF files. PyPDF2 can retrieve text and metadata from PDFs as well.
+**Kokoro / Coqui TTS** — open-source neural TTS that runs offline and produces near-human quality audio. Ruled out for this project because it requires downloading a ~350 MB model and a PyTorch runtime, adding significant setup complexity.
 
-### A full example of multi PDF script 
-A complete tool with source code that can help and be an example of how to use PDF and TTS libraries
-- https://github.com/lazycatcoder/pdf-to-mp3/blob/main/pdf-to-mp3.py  
+**Decision: gTTS** — best balance of voice quality, ease of integration, and zero cost. The reliability concern (rate limiting) was addressed at the implementation level (see below).
 
-### How will my Python script work and what functionalities offer?
+---
 
-The script will take in input the following data:
-1. pdf filename 
-2. PDF language (e.g English, Italian, etc.)
-3. Output language 
-4. Output filename
-After the user will have provided all the data the program will proceed this way:
-- Extract  
- 
+## Implementation
 
+### Processing Pipeline
+
+```text
+User input
+    │
+    ▼
+Validate PDF path
+    │
+    ▼
+Extract text page by page (PyPDF2)
+    │
+    ▼
+Translate in chunks if needed (deep-translator)
+    │
+    ▼
+Convert to audio in chunks (gTTS) ──► in-memory BytesIO buffer
+    │
+    ▼
+Write MP3 to disk
+```
+
+### Key Technical Decisions
+
+**Chunking (4 500 characters per chunk)**
+Both the Google Translate and gTTS APIs silently fail or raise errors on inputs larger than ~5 000 characters. The full PDF text is split at sentence boundaries (falling back to word boundaries, then a hard cut) before every API call. Chunks are reassembled after translation and streamed into a single audio buffer after TTS.
+
+**In-memory audio assembly**
+Each gTTS chunk is written directly to a shared `io.BytesIO` buffer via `write_to_fp()` rather than saving temporary files to disk. MP3 is a frame-based format, so appending frames from consecutive chunks produces a seamlessly playable file.
+
+**Rate-limit handling (two-layer)**
+
+- *Prevention*: a 1-second pause after every successful TTS request keeps the request rate within Google's undocumented threshold.
+- *Recovery*: a `gTTSError` 429 is caught and retried up to 4 times with exponential backoff (5 s, 10 s, 15 s, 20 s) before the error is re-raised.
+
+**Progress display**
+Each of the three pipeline stages reports per-page or per-chunk progress using `\r` (carriage return) so updates overwrite the same terminal line rather than scrolling.
+
+---
+
+## Usage
+
+Place the PDF file in the same directory as `main.py`, then run:
+
+```bash
+python main.py
+```
+
+The script will prompt for:
+
+```text
+Enter the language of the PDF (e.g., 'en', 'it', 'es'):
+Enter the name of the PDF file (including the .pdf extension):
+Enter the language for the audiobook (e.g., 'en', 'it', 'es'):
+Enter the name for the output audiobook (without extension):
+```
+
+The output MP3 is saved in the same directory.
+
+### Dependencies
+
+```bash
+pip install PyPDF2 deep-translator gTTS
+```
