@@ -55,6 +55,10 @@ class User(UserMixin, db.Model):
     # Stored as a Werkzeug hash (e.g. "pbkdf2:sha256:..."), never plain-text
     Password     = db.Column(db.String(255), nullable=False)
     CreatedAt    = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    # Email confirmation — added via _run_email_migration() for existing tables
+    EmailConfirmed    = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
+    ConfirmationToken = db.Column(db.String(128), nullable=True)
+    TokenExpiresAt    = db.Column(db.DateTime, nullable=True)
 
     # One-to-many: one User has many Lists.
     # backref='owner' adds a shortcut: given a List object, list.owner returns its User.

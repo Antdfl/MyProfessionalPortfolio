@@ -1,0 +1,147 @@
+{#
+  confirm_pending.html — "Check your inbox" page
+  ================================================
+  Shown after registration and when an unconfirmed user tries to log in.
+
+  Context variables (from confirm_pending route):
+    email              — the address the confirmation was sent to
+    cooldown_remaining — seconds left before resend is allowed (0 = enabled immediately)
+
+  The resend button is disabled while the JS countdown is running.
+  Clicking it submits a POST to /resend-confirmation, which resets the token
+  (invalidating the previous link) and sends a new email.
+#}
+{% extends "base.html" %}
+
+{% block title %}Check your inbox — Listly{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Confirm-pending page layout ──────────────────────────────── */
+  .pending-wrap {
+    min-height: calc(100vh - 64px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 48px 20px;
+  }
+  .pending-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    box-shadow: var(--shadow-md);
+    padding: 48px 44px;
+    max-width: 480px; width: 100%;
+    text-align: center;
+    animation: fadeIn .35s ease both;
+  }
+  .pending-icon {
+    width: 64px; height: 64px; border-radius: 20px;
+    background: var(--primary-soft);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 24px;
+  }
+  .pending-icon svg { width: 30px; height: 30px; }
+  .pending-heading {
+    font-size: 22px; font-weight: 800;
+    letter-spacing: -.03em; color: var(--ink);
+    margin-bottom: 12px;
+  }
+  .pending-email {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 500;
+    color: var(--primary);
+    background: var(--primary-soft);
+    padding: 4px 10px; border-radius: 8px;
+    margin-bottom: 32px;
+  }
+  .pending-sub {
+    font-size: 14px; color: var(--ink-2); line-height: 1.6;
+    margin-bottom: 32px;
+  }
+  .btn-resend {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px;
+    width: 100%; padding: 14px 22px; border-radius: 999px;
+    font-weight: 600; font-size: 15px;
+    background: var(--primary); color: #fff;
+    border: none; cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn-resend:active:not(:disabled) { transform: scale(.97); }
+  .btn-resend:hover:not(:disabled)  { opacity: .9; }
+  .btn-resend:disabled {
+    background: var(--line); color: var(--ink-3); cursor: not-allowed;
+  }
+  .pending-footer {
+    margin-top: 24px; font-size: 13px; color: var(--ink-3);
+  }
+  .pending-footer a { color: var(--primary); font-weight: 500; text-decoration: none; }
+  .pending-footer a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pending-wrap">
+  <div class="pending-card">
+
+    <!-- Envelope icon -->
+    <div class="pending-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="3"/>
+        <path d="M2 7l10 7 10-7"/>
+      </svg>
+    </div>
+
+    <h1 class="pending-heading">{{ L.pending_heading }}</h1>
+    <span class="pending-email">{{ email }}</span>
+
+    <p class="pending-sub">
+      We sent a confirmation link to this address.<br>
+      Click it to activate your account — the link expires in {{ 30 }} minutes.
+    </p>
+
+    <!-- Resend form -->
+    <form method="POST" action="{{ url_for('resend_confirmation') }}">
+      <button id="resend-btn" class="btn-resend"
+              {% if cooldown_remaining > 0 %}disabled{% endif %}>
+        {{ L.pending_resend_btn }}
+      </button>
+    </form>
+
+    <p class="pending-footer">
+      {{ L.pending_back_login | capitalize }}?
+      <a href="{{ url_for('login') }}">{{ L.pending_back_login }}</a>
+    </p>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    const btn = document.getElementById('resend-btn');
+    const label = {{ L.pending_resend_btn | tojson }};
+    let remaining = {{ cooldown_remaining }};
+
+    if (remaining <= 0) {
+      btn.disabled = false;
+      btn.textContent = label;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = label + ' (' + remaining + 's)';
+
+    const timer = setInterval(function () {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.textContent = label;
+      } else {
+        btn.textContent = label + ' (' + remaining + 's)';
+      }
+    }, 1000);
+  })();
+</script>
+{% endblock %}

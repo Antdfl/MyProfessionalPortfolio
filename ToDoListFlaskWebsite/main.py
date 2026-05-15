@@ -25,7 +25,7 @@ Configuration is read from environment variables so the same code works in
 both development and production without any code changes:
 
   SECRET_KEY    – signs the session cookie (keep this secret in production!)
-  DATABASE_URL  – SQLAlchemy DB connection string; falls back to a local
+  SQLALCHEMY_DATABASE_URI – SQLAlchemy DB connection string; falls back to a local
                   PostgreSQL database named 'todolist'
 
 Running locally:
@@ -34,13 +34,20 @@ Running locally:
 """
 
 import os
+import smtplib
+import ssl
+import secrets
+import certifi
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from flask import Flask, render_template, redirect, url_for, request, flash, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, List, Task, SiteLabel
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # dev only — not used in production (Prod/main.py)
 
-load_dotenv()
+load_dotenv()  # loads .env in development; no-op in production
 
 # GLOBAL CONFIGURATION
 PWD_LENGTH_MIN = 8  # minimum password length requirement for registration
@@ -56,6 +63,20 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
+
+# ── Email / SMTP configuration ────────────────────────────────────────────────
+# In development these are read from .env via load_dotenv() above.
+# In production (Prod/main.py) they come from os.environ set in flask.wsgi.
+SMTP_HOST            = os.environ.get('SMTP_HOST', '')
+SMTP_PORT            = os.environ.get('SMTP_PORT', 587)
+MAIL_SENDER          = os.environ.get('MAIL_SENDER','')
+MAIL_LOGIN           = os.environ.get('MAIL_LOGIN', '')
+MAIL_PASSWORD        = os.environ.get('MAIL_PASSWORD', '')
+# Set SMTP_VERIFY_SSL=false in .env when a local SSL inspector (antivirus/proxy)
+# intercepts TLS and presents a self-signed cert. Never disable in production.
+SMTP_VERIFY_SSL      = os.environ.get('SMTP_VERIFY_SSL', 'true').lower() != 'false'
+TOKEN_TTL_MINUTES    = 30
+RESEND_COOLDOWN_SECS = 60
 
 # ── Flask-Login setup ─────────────────────────────────────────────────────────
 
@@ -246,6 +267,47 @@ SEED_LABELS = {
         'it': 'Lista rinominata.',
         'es': 'Lista renombrada.',
     },
+
+    # ── Email confirmation ─────────────────────────────────────────────────────
+    'flash_email_not_confirmed': {
+        'en': 'Please confirm your email address before logging in.',
+        'it': 'Conferma il tuo indirizzo email prima di accedere.',
+        'es': 'Confirma tu dirección de correo antes de iniciar sesión.',
+    },
+    'flash_confirm_invalid': {
+        'en': 'This confirmation link has expired or is invalid. Request a new one below.',
+        'it': 'Questo link di conferma è scaduto o non è valido. Richiedi un nuovo link.',
+        'es': 'Este enlace de confirmación ha expirado o no es válido. Solicita uno nuevo.',
+    },
+    'flash_confirm_success': {
+        'en': 'Email confirmed — you can now log in.',
+        'it': 'Email confermata — ora puoi accedere.',
+        'es': 'Correo confirmado — ya puedes iniciar sesión.',
+    },
+    'flash_already_confirmed': {
+        'en': 'Your email is already confirmed. Please log in.',
+        'it': 'La tua email è già confermata. Accedi.',
+        'es': 'Tu correo ya está confirmado. Inicia sesión.',
+    },
+    'flash_resend_sent': {
+        'en': 'Confirmation email sent — check your inbox.',
+        'it': 'Email di conferma inviata — controlla la tua casella.',
+        'es': 'Correo de confirmación enviado — revisa tu bandeja.',
+    },
+    'flash_resend_failed': {
+        'en': 'Could not send the confirmation email. Please try again.',
+        'it': "Impossibile inviare l'email di conferma. Riprova.",
+        'es': 'No se pudo enviar el correo de confirmación. Inténtalo de nuevo.',
+    },
+    'flash_send_failed': {
+        'en': 'Account created but the confirmation email could not be sent. Use the button below to resend it.',
+        'it': "Account creato ma l'email di conferma non è stata inviata. Usa il pulsante per reinviarla.",
+        'es': 'Cuenta creada pero no se pudo enviar el correo. Usa el botón para reenviarlo.',
+    },
+    'pending_heading':    {'en': 'Check your inbox',  'it': 'Controlla la tua casella', 'es': 'Revisa tu correo'},
+    'pending_resend_btn': {'en': 'Resend email',      'it': 'Reinvia email',            'es': 'Reenviar correo'},
+    'pending_back_login': {'en': 'back to log in',    'it': 'torna al login',           'es': 'volver al inicio de sesión'},
+
     'detail_rename_btn':  {'en': 'Rename',  'it': 'Rinomina', 'es': 'Renombrar'},
     'detail_save_btn':    {'en': 'Save',    'it': 'Salva',    'es': 'Guardar'},
     'detail_cancel_btn':  {'en': 'Cancel',  'it': 'Annulla',  'es': 'Cancelar'},
@@ -332,6 +394,122 @@ def inject_labels():
         lang = 'en'
         L = _label_cache.get('en', {})
     return dict(L=L, current_lang=lang)
+
+
+# ── Email confirmation helpers ────────────────────────────────────────────────
+
+def _issue_confirmation_token(user) -> str:
+    """Generate a fresh token, store it on the user object (caller must commit)."""
+    token = secrets.token_urlsafe(32)
+    user.ConfirmationToken = token
+    user.TokenExpiresAt    = datetime.utcnow() + timedelta(minutes=TOKEN_TTL_MINUTES)
+    return token
+
+
+def _send_confirmation_email(to_email: str, first_name: str, confirm_url: str) -> None:
+    """Send an HTML + plain-text confirmation email via Brevo SMTP relay (STARTTLS port 587)."""
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = 'Confirm your Listly account'
+    msg['From']    = MAIL_SENDER
+    msg['To']      = to_email
+
+    text_body = (
+        f"Hi {first_name},\n\n"
+        f"Click the link below to confirm your Listly account:\n"
+        f"{confirm_url}\n\n"
+        f"This link expires in {TOKEN_TTL_MINUTES} minutes.\n\n"
+        f"If you did not sign up for Listly, you can ignore this email.\n\n"
+        f"— The Listly Team"
+    )
+    html_body = f"""\
+<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;background:#f9f9f9;margin:0;padding:40px 20px">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;
+              padding:40px;box-shadow:0 2px 12px rgba(0,0,0,.06)">
+    <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e">Confirm your email</h2>
+    <p style="color:#666;margin:0 0 28px;font-size:15px">Hi {first_name}, welcome to Listly!</p>
+    <a href="{confirm_url}"
+       style="display:inline-block;padding:13px 28px;background:#6b46ff;color:#fff;
+              border-radius:999px;text-decoration:none;font-weight:600;font-size:15px">
+      Confirm my email
+    </a>
+    <p style="color:#999;margin:24px 0 0;font-size:13px">
+      This link expires in {TOKEN_TTL_MINUTES} minutes.<br>
+      If you did not create a Listly account, ignore this email.
+    </p>
+  </div>
+</body>
+</html>"""
+
+    msg.attach(MIMEText(text_body, 'plain'))
+    msg.attach(MIMEText(html_body, 'html'))
+
+    print(f"[DIAG] SMTP config → HOST={SMTP_HOST!r}  PORT={SMTP_PORT!r}  "
+          f"LOGIN={MAIL_LOGIN!r}  SENDER={MAIL_SENDER!r}  TO={to_email!r}  "
+          f"VERIFY_SSL={SMTP_VERIFY_SSL!r}")
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    if not SMTP_VERIFY_SSL:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        print("[DIAG] SSL verification DISABLED (SMTP_VERIFY_SSL=false)")
+    print("[DIAG] Connecting to SMTP server…")
+    with smtplib.SMTP(SMTP_HOST, int(SMTP_PORT), timeout=15) as smtp:
+        print("[DIAG] Connected. Sending EHLO…")
+        smtp.ehlo()
+        print("[DIAG] Starting TLS…")
+        smtp.starttls(context=ctx)
+        smtp.ehlo()
+        print("[DIAG] Logging in…")
+        smtp.login(MAIL_LOGIN, MAIL_PASSWORD)
+        print("[DIAG] Sending message…")
+        smtp.sendmail(MAIL_SENDER, [to_email], msg.as_string())
+        print(f"[DIAG] Message sent successfully to {to_email}")
+
+
+def _run_email_migration() -> None:
+    """Add email-confirmation columns to the users table if they don't exist.
+
+    Dev uses the 'users' table (no prefix); production uses 'tl_users'.
+    DEFAULT TRUE so pre-existing rows are not locked out.
+    The DO block renames any lowercase columns created by an earlier broken
+    migration before attempting the quoted PascalCase ADD COLUMN.
+    """
+    try:
+        db.session.execute(db.text("""
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='users'
+                           AND column_name='email_confirmed') THEN
+                    ALTER TABLE users RENAME COLUMN email_confirmed TO "EmailConfirmed";
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='users'
+                           AND column_name='confirmation_token') THEN
+                    ALTER TABLE users RENAME COLUMN confirmation_token TO "ConfirmationToken";
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='users'
+                           AND column_name='token_expires_at') THEN
+                    ALTER TABLE users RENAME COLUMN token_expires_at TO "TokenExpiresAt";
+                END IF;
+            END $$;
+        """))
+        db.session.execute(db.text(
+            'ALTER TABLE users '
+            'ADD COLUMN IF NOT EXISTS "EmailConfirmed" BOOLEAN NOT NULL DEFAULT TRUE'
+        ))
+        db.session.execute(db.text(
+            'ALTER TABLE users ADD COLUMN IF NOT EXISTS "ConfirmationToken" VARCHAR(128)'
+        ))
+        db.session.execute(db.text(
+            'ALTER TABLE users ADD COLUMN IF NOT EXISTS "TokenExpiresAt" TIMESTAMP'
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        import logging
+        logging.error("Email confirmation migration failed: %s", exc)
 
 
 # ── Language switcher ─────────────────────────────────────────────────────────
@@ -422,13 +600,27 @@ def register():
             LastName=last_name,
             EmailAddress=email,
             Password=generate_password_hash(password),
+            EmailConfirmed=False,
         )
         db.session.add(user)
+        db.session.flush()
+
+        token = _issue_confirmation_token(user)
         db.session.commit()
 
-        login_user(user)
-        flash(get_label('flash_welcome', name=first_name), 'success')
-        return redirect(url_for('lists'))
+        confirm_url = url_for('confirm_email', token=token, _external=True)
+        try:
+            _send_confirmation_email(email, first_name, confirm_url)
+        except Exception:
+            import traceback
+            print("[DIAG] *** Email send FAILED ***")
+            traceback.print_exc()
+            flash(get_label('flash_send_failed'), 'error')
+
+        session['pending_email'] = email
+        session['pending_name']  = first_name
+        session.pop('last_resend_at', None)
+        return redirect(url_for('confirm_pending'))
 
     return render_template('register.html', pwd_min=PWD_LENGTH_MIN)
 
@@ -465,6 +657,12 @@ def login():
         user     = User.query.filter_by(EmailAddress=email).first()
 
         if user and check_password_hash(user.Password, password):
+            if not user.EmailConfirmed:
+                session['pending_email'] = user.EmailAddress
+                session['pending_name']  = user.FirstName
+                session.pop('last_resend_at', None)
+                flash(get_label('flash_email_not_confirmed'), 'info')
+                return redirect(url_for('confirm_pending'))
             login_user(user)
             next_page = request.args.get('next')
             return redirect(next_page or url_for('lists'))
@@ -490,6 +688,67 @@ def logout():
     """
     logout_user()
     return redirect(url_for('index'))
+
+
+@app.route('/confirm-pending')
+def confirm_pending():
+    email = session.get('pending_email')
+    if not email:
+        return redirect(url_for('register'))
+    last_resend_ts = session.get('last_resend_at')
+    cooldown_remaining = 0
+    if last_resend_ts:
+        elapsed = datetime.utcnow().timestamp() - last_resend_ts
+        cooldown_remaining = max(0, int(RESEND_COOLDOWN_SECS - elapsed))
+    return render_template('confirm_pending.html', email=email, cooldown_remaining=cooldown_remaining)
+
+
+@app.route('/confirm/<token>')
+def confirm_email(token):
+    user = User.query.filter_by(ConfirmationToken=token).first()
+    if not user or user.TokenExpiresAt is None or user.TokenExpiresAt < datetime.utcnow():
+        flash(get_label('flash_confirm_invalid'), 'error')
+        return redirect(url_for('login'))
+    if user.EmailConfirmed:
+        flash(get_label('flash_already_confirmed'), 'info')
+        return redirect(url_for('login'))
+    user.EmailConfirmed    = True
+    user.ConfirmationToken = None
+    user.TokenExpiresAt    = None
+    db.session.commit()
+    session.pop('pending_email',  None)
+    session.pop('pending_name',   None)
+    session.pop('last_resend_at', None)
+    flash(get_label('flash_confirm_success'), 'success')
+    return redirect(url_for('login'))
+
+
+@app.route('/resend-confirmation', methods=['POST'])
+def resend_confirmation():
+    email = session.get('pending_email')
+    if not email:
+        return redirect(url_for('register'))
+    last_resend_ts = session.get('last_resend_at')
+    if last_resend_ts:
+        elapsed = datetime.utcnow().timestamp() - last_resend_ts
+        if elapsed < RESEND_COOLDOWN_SECS:
+            return redirect(url_for('confirm_pending'))
+    user = User.query.filter_by(EmailAddress=email).first()
+    if not user or user.EmailConfirmed:
+        session.pop('pending_email', None)
+        return redirect(url_for('login'))
+    token = _issue_confirmation_token(user)
+    db.session.commit()
+    session['last_resend_at'] = datetime.utcnow().timestamp()
+    confirm_url = url_for('confirm_email', token=token, _external=True)
+    try:
+        _send_confirmation_email(email, user.FirstName, confirm_url)
+        flash(get_label('flash_resend_sent'), 'success')
+    except Exception as _mail_err:
+        import logging
+        logging.error("Resend confirmation email failed: %s", _mail_err)
+        flash(get_label('flash_resend_failed'), 'error')
+    return redirect(url_for('confirm_pending'))
 
 
 # ── Lists ─────────────────────────────────────────────────────────────────────
@@ -738,6 +997,7 @@ def db_status():
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()   # create tables if they don't exist yet
-        seed_labels()     # insert missing i18n labels
+        db.create_all()
+        seed_labels()
+        _run_email_migration()
     app.run(debug=True)

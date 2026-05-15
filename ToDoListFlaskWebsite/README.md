@@ -160,9 +160,53 @@ Net result: after the first request per language (or after startup if seed_label
 1. Prepare a local Postgres sql Container for local test. Done
 2. Test it locally in a development environment. Done
 
-### 3.6 Production relaese  
--  After the positive test locally, prepare the folder /vendor to deploy into the Production Linux environment. 
--  Install the source code into production, make all the settings (.htaccess, environmental variabile, flask setup)
+### 3.6 Production release
+- After the positive test locally, prepare the folder /vendor to deploy into the Production Linux environment.
+- Install the source code into production, make all the settings (.htaccess, environmental variables, flask setup)
+
+### 3.7 EMAIL CONFIRMATION ON REGISTRATION
+
+#### Objective
+Require new users to verify their email address before they can log in, preventing fake account creation and ensuring the stored email is reachable.
+
+#### User Flow
+1. User fills in the registration form and submits.
+2. Account is created with `EmailConfirmed=False` — login is blocked until confirmation.
+3. A confirmation email is sent with a tokenised link valid for **30 minutes**.
+4. User is redirected to a "Check your inbox" page (`/confirm-pending`).
+5. User clicks the link → account is activated → redirected to login with a success message.
+6. If the email didn't arrive, a **Resend** button appears after a **60-second cooldown**; resending invalidates the previous link immediately.
+7. If a returning (unconfirmed) user tries to log in, they are redirected to the same `/confirm-pending` page.
+
+#### Database Changes (models.py — both dev and prod)
+Three new columns added to the `User` model via a safe `ALTER TABLE … ADD COLUMN IF NOT EXISTS` migration that runs at startup:
+
+| Column            | Type         | Default | Notes                                      |
+|-------------------|--------------|---------|--------------------------------------------|
+| `EmailConfirmed`  | Boolean      | FALSE   | Pre-existing rows defaulted to TRUE so they are not locked out |
+| `ConfirmationToken` | String(128) | NULL  | 43-char URL-safe random token; overwritten on each resend |
+| `TokenExpiresAt`  | DateTime     | NULL    | now + 30 min; checked server-side at confirmation |
+
+#### New Routes (main.py)
+| Route | Method | Description |
+|---|---|---|
+| `/confirm-pending` | GET | "Check your inbox" page; reads `session['pending_email']` |
+| `/confirm/<token>` | GET | Validates token, marks account confirmed, redirects to login |
+| `/resend-confirmation` | POST | Issues new token (invalidates old), sends new email, enforces 60s cooldown |
+
+#### Email Delivery
+- **SMTP relay:** Brevo (formerly Sendinblue) — 300 emails/day free tier, IP-restricted to the server's outgoing address.
+- **Protocol:** STARTTLS on port 587.
+- **Sender:** configured via `MAIL_SENDER` environment variable.
+- **Credentials:** `MAIL_LOGIN` and `MAIL_PASSWORD` environment variables (set in `flask.wsgi` for production, `.env` for development).
+
+#### Dev vs Production Differences
+| Aspect | Development (`main.py`) | Production (`Prod/main.py`) |
+|---|---|---|
+| Env vars | Loaded from `.env` via `python-dotenv` | Set in `flask.wsgi` before app import |
+| DB table | `users` | `tl_users` |
+| Template reload | Not forced | `TEMPLATES_AUTO_RELOAD = True` |
+| SQLAlchemy C ext | Enabled | Disabled via `DISABLE_SQLALCHEMY_CEXT_RUNTIME=1` |
 
 
 

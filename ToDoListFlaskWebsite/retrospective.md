@@ -186,7 +186,57 @@ by instructing Jinja2 to check file modification times on every request.
 
 ---
 
-## Part 3 — Lessons Learned Summary
+## Part 3 — Email Confirmation Feature
+
+### Challenge 6: PostgreSQL column case sensitivity and SQLAlchemy
+
+Adding three new columns to an existing table via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` seemed straightforward, but the migration silently created lowercase column names (`email_confirmed`) while SQLAlchemy generates quoted PascalCase identifiers (`"EmailConfirmed"`) because the model attributes follow the project's PascalCase convention.
+
+PostgreSQL is case-sensitive when identifiers are double-quoted. The result was a `UndefinedColumn` error on every query after the migration ran, with the helpful hint: `Perhaps you meant to reference the column "tl_users.email_confirmed"`.
+
+**Resolution:** Always quote column names in DDL statements to match the SQLAlchemy model exactly:
+
+```sql
+ALTER TABLE tl_users ADD COLUMN IF NOT EXISTS "EmailConfirmed" BOOLEAN NOT NULL DEFAULT TRUE;
+```
+
+A `DO $$` block was also added to rename any already-created lowercase columns on databases where the broken migration had already run, making the fix idempotent and safe on both old and fresh deployments.
+
+**Lesson:** When mixing raw DDL with SQLAlchemy ORM, verify that identifier casing in SQL strings matches exactly what SQLAlchemy will generate in queries. A quick `SELECT column_name FROM information_schema.columns WHERE table_name='...'` after migration confirms the actual stored name.
+
+---
+
+### Challenge 7: Transactional email delivery on shared hosting
+
+Once the confirmation email code was working locally, production delivery to Gmail addresses failed silently — the SMTP server returned `250 OK` but emails never arrived, not even in spam.
+
+**Root cause:** Shared hosting providers' outgoing mail IP ranges are commonly listed on spam blocklists used by Gmail. The local MTA accepted the message but Gmail's inbound filters silently discarded it. Tiscali (a European ISP) accepted the same messages without issue, confirming the problem was Gmail-specific IP reputation rather than a code defect.
+
+**Resolution path (multiple steps):**
+
+1. **Diagnostic WSGI script** — a standalone `mail_test.wsgi` probed three SMTP configurations (localhost:25, real-hostname:587, real-hostname:465) independently and rendered results as HTML. This confirmed which ports and auth methods the server supported before any application code was written.
+
+2. **External SMTP relay** — switched to Brevo (free tier, 300 emails/day) to route outbound mail through a reputable IP with established Gmail relationships.
+
+3. **IP allowlisting** — Brevo's security settings allow restricting SMTP key usage to specific IP addresses. A temporary diagnostic Flask route fetched the server's outgoing IP from an external service, which was then added to Brevo's allowlist. The SMTP key is now useless even if the `flask.wsgi` credentials are exposed.
+
+4. **Sender verification** — Brevo requires sender addresses to be verified. The hosting provider's subdomain DNS is managed by the host (no user access), making domain-level DKIM/SPF authentication impossible. The solution was to use a personal email address as the `MAIL_SENDER`, which Brevo verifies by sending a confirmation link to that mailbox.
+
+5. **mod_wsgi caching** — after uploading updated files, the running WSGI process continued using the cached module. Environment variable changes in `flask.wsgi` only take effect after the process restarts. On this host, the process has a fixed lifetime (~2 hours); touching `flask.wsgi` to update its modification timestamp is supposed to trigger a reload but was unreliable. The only certain method was to wait for the natural process restart.
+
+**Lessons:**
+
+| Finding | Lesson |
+|---|---|
+| Gmail silently drops mail from shared-hosting IPs | Never rely on the local MTA for transactional email in production — use a dedicated relay (Brevo, SendGrid, Mailgun) from day one |
+| SMTP `250 OK` ≠ delivered | Always check the relay's delivery logs, not just the SMTP handshake result |
+| Shared hosting DNS | If you don't own the domain's DNS zone, domain-level email authentication (DKIM/SPF via Brevo) is impossible — plan for personal-domain or relay-subdomain senders |
+| mod_wsgi env var timing | Environment variables set in `flask.wsgi` are read only when the module is first imported. Changes require a process restart, which on HelioHost is not user-triggered |
+| Diagnostic-first approach | Building an isolated diagnostic tool (standalone WSGI or Flask route) before wiring features into the application saved significant debugging time by proving each layer independently |
+
+---
+
+## Part 4 — Lessons Learned Summary
 
 | Area | Lesson |
 |---|---|
