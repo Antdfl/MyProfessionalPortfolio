@@ -1,0 +1,5 @@
+flask
+cloudmersive-barcode-api-client
+requests
+deep-translator
+python-dotenv

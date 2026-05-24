@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ t.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+
+        <div class="lang-switcher" id="lang-switcher">
+            {% if scanned %}
+                <span class="{{ 'active' if lang == 'en' }}">EN</span>
+                <span class="{{ 'active' if lang == 'it' }}">IT</span>
+                <span class="{{ 'active' if lang == 'es' }}">ES</span>
+            {% else %}
+                <a href="/?lang=en" class="{{ 'active' if lang == 'en' }}">EN</a>
+                <a href="/?lang=it" class="{{ 'active' if lang == 'it' }}">IT</a>
+                <a href="/?lang=es" class="{{ 'active' if lang == 'es' }}">ES</a>
+            {% endif %}
+        </div>
+
+        <h1>{{ t.title }}</h1>
+        <p class="subtitle">{{ t.subtitle }}</p>
+
+        <form action="/scan" method="post" enctype="multipart/form-data" class="upload-form">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            <label for="image" class="file-label">
+                <span>{{ t.choose_image }}</span>
+                <input type="file" name="image" id="image" accept=".jpg,.jpeg,.png" required>
+            </label>
+            <button type="submit" class="btn">{{ t.scan_button }}</button>
+        </form>
+
+        {% if error %}
+        <div class="message error">{{ error }}</div>
+        {% endif %}
+
+        {% if product %}
+        <div class="result">
+            <h2>{{ t.result_title }}</h2>
+            <p class="barcode-code">{{ t.code_label }}: {{ barcode }}</p>
+            <table>
+                <tr>
+                    <th>{{ t.name_label }}</th>
+                    <td>{{ product.name }}</td>
+                </tr>
+                <tr>
+                    <th>{{ t.brand_label }}</th>
+                    <td>{{ product.brand }}</td>
+                </tr>
+                <tr>
+                    <th>{{ t.category_label }}</th>
+                    <td>{{ product.category }}</td>
+                </tr>
+                <tr>
+                    <th>{{ t.quantity_label }}</th>
+                    <td>{{ product.quantity }}</td>
+                </tr>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if scanned %}
+        <a href="/?lang={{ lang }}" class="btn btn-home">{{ t.home_button }}</a>
+        {% endif %}
+
+        {% if not scanned %}
+        <p class="disclaimer">{{ t.disclaimer }}</p>
+        {% endif %}
+
+    </div>
+    <script>
+        var fileInput = document.getElementById('image');
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                var switcher = document.getElementById('lang-switcher');
+                if (this.files.length > 0) {
+                    switcher.classList.add('lang-locked');
+                } else {
+                    switcher.classList.remove('lang-locked');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
