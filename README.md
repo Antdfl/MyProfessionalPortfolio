@@ -33,12 +33,13 @@ After 25 years architecting enterprise Oracle database solutions, I'm actively b
 - **Integration:** REST APIs, data pipelines, system integration patterns
 - **Methodologies:** Agile/Scrum (Professional Scrum Developer I certified)
 
-### Recent Certifications (2024-2025)
+### Recent Certifications (2024-2026)
 - 🏅 **Oracle Cloud Infrastructure 2024 Generative AI Certified Professional** (July 2025)
 - 🏅 **Oracle APEX Professional** (2024)
 - 🏅 **GitHub Copilot Certification** (July 2025)
 - 🏅 **Cambridge Advanced (CAE) - C1 English**
 - 🏅 **DELE C1 (by Instituto Cervantes) - C1 Spanish** (February 2026)
+- 🏅 **100 Days of Code: The Complete Python Pro Bootcamp** (April 2026)
   
 ---
 
@@ -143,7 +144,15 @@ Each folder in this repository represents a **distinct project**. Inside every p
 
 This structure enforces deliberate reflection: not just *building* things, but understanding *why* choices were made and *what* to carry forward.
 
-> **Work in progress.** The repository is in its early organization phase. Projects are being curated and documented to showcase-quality standard — this structure will grow steadily.
+> **Completed (June 29, 2026).** All portfolio projects listed above have been built and documented to showcase-quality standard.
+
+---
+
+## 🔗 Related Repository: Data Engineering Portfolio
+
+New dedicated repository: **[DataEngineeringPortfolio](https://github.com/Antdfl/DataEngineeringPortfolio)**
+
+It collects projects applying 25+ years of database architecture expertise to modern data engineering — pipeline design, data quality frameworks, and cloud-native processing with Python, Spark, Databricks, dbt, and Airflow.
 
 ---
 
@@ -151,4 +160,4 @@ This structure enforces deliberate reflection: not just *building* things, but u
 
 ---
 
-**Last Updated:** April 2026
+**Last Updated:** June 2026
